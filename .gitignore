@@ -1,0 +1,8 @@
+.env
+__pycache__/
+.venv/
+*.db
+*.xlsx
+*.log
+dist/
+node_modules/

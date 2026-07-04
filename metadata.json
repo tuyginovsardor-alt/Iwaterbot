@@ -1,0 +1,6 @@
+{
+  "name": "iWater Telegram Bot",
+  "description": "Production-ready Telegram bot for 19L water delivery service with multilingual support, admin panel, and automated deployment scripts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
