@@ -1,9 +1,8 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from locales.strings import MESSAGES
-from config import WATER_PRICE
 
-def get_quantity_kb(quantity, lang):
-    total = quantity * WATER_PRICE
+def get_quantity_kb(quantity, price, lang):
+    total = quantity * price
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [

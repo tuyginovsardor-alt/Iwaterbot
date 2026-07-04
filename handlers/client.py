@@ -10,7 +10,7 @@ from states.fsm_states import ClientStates
 from database import db
 from locales.strings import MESSAGES
 from keyboards import reply, inline
-from config import WATER_PRICE, ADMIN_IDS
+from config import ADMIN_IDS
 
 router = Router()
 
@@ -113,7 +113,7 @@ async def order_water(message: types.Message, state: FSMContext):
     await state.update_data(quantity=1)
     await message.answer(
         MESSAGES[lang]['select_quantity'].format(total=price), 
-        reply_markup=inline.get_quantity_kb(1, lang),
+        reply_markup=inline.get_quantity_kb(1, price, lang),
         parse_mode="Markdown"
     )
 
@@ -142,7 +142,7 @@ async def handle_quantity(call: types.CallbackQuery, state: FSMContext, bot: Bot
         total = quantity * price
         await call.message.edit_text(
             MESSAGES[lang]['select_quantity'].format(total=total),
-            reply_markup=inline.get_quantity_kb(quantity, lang),
+            reply_markup=inline.get_quantity_kb(quantity, price, lang),
             parse_mode="Markdown"
         )
     elif call.data == 'dec':
@@ -152,7 +152,7 @@ async def handle_quantity(call: types.CallbackQuery, state: FSMContext, bot: Bot
             total = quantity * price
             await call.message.edit_text(
                 MESSAGES[lang]['select_quantity'].format(total=total),
-                reply_markup=inline.get_quantity_kb(quantity, lang),
+                reply_markup=inline.get_quantity_kb(quantity, price, lang),
                 parse_mode="Markdown"
             )
     elif call.data == 'add_to_cart':

@@ -55,25 +55,34 @@ fi
 # Load DOMAIN from .env
 export $(grep -v '^#' .env | xargs)
 
-# 6. Install Caddy
-echo "Installing Caddy Server..."
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update
-sudo apt install caddy -y
+# Prompt for Web Service
+echo ""
+read -p "Veb-sayt (FastAPI) va Caddy serverni ham o'rnatish/ishga tushirishni xohlaysizmi? (y/n): " ENABLE_WEB
+echo ""
 
-# 7. Configure Caddy
-echo "Configuring Caddyfile..."
-CADDY_CONF="$DOMAIN {
-    reverse_proxy localhost:3001
-    encode gzip
-    log {
-        output file /var/log/caddy/access.log
-    }
-}"
-echo "$CADDY_CONF" | sudo tee /etc/caddy/Caddyfile
-sudo systemctl restart caddy
+if [ "$ENABLE_WEB" = "y" ] || [ "$ENABLE_WEB" = "Y" ]; then
+    # 6. Install Caddy
+    echo "Installing Caddy Server..."
+    sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+    sudo apt update
+    sudo apt install caddy -y
+
+    # 7. Configure Caddy
+    echo "Configuring Caddyfile..."
+    CADDY_CONF="$DOMAIN {
+        reverse_proxy localhost:3001
+        encode gzip
+        log {
+            output file /var/log/caddy/access.log
+        }
+    }"
+    echo "$CADDY_CONF" | sudo tee /etc/caddy/Caddyfile
+    sudo systemctl restart caddy
+else
+    echo "Veb-sayt va Caddy sozlanmadi va o'rnatilmadi."
+fi
 
 # 8. Create systemd services
 echo "Creating systemd services..."
@@ -97,8 +106,9 @@ WantedBy=multi-user.target"
 
 echo "$SERVICE_FILE" | sudo tee /etc/systemd/system/iwater_bot.service
 
-# Web Service (FastAPI)
-WEB_SERVICE_FILE="[Unit]
+# Web Service if enabled
+if [ "$ENABLE_WEB" = "y" ] || [ "$ENABLE_WEB" = "Y" ]; then
+    WEB_SERVICE_FILE="[Unit]
 Description=iWater Web Landing Page (FastAPI)
 After=network.target
 
@@ -112,18 +122,33 @@ Restart=always
 [Install]
 WantedBy=multi-user.target"
 
-echo "$WEB_SERVICE_FILE" | sudo tee /etc/systemd/system/iwater_web.service
+    echo "$WEB_SERVICE_FILE" | sudo tee /etc/systemd/system/iwater_web.service
+fi
 
 # 9. Start services
 echo "Starting and enabling services..."
 sudo systemctl daemon-reload
-sudo systemctl enable iwater_bot
-sudo systemctl start iwater_bot
-sudo systemctl enable iwater_web
-sudo systemctl start iwater_web
 
-echo "--- Setup Complete! ---"
-echo "Bot status: sudo systemctl status iwater_bot"
-echo "Web status: sudo systemctl status iwater_web"
-echo "Caddy status: sudo systemctl status caddy"
-echo "Your site should be live at: https://$DOMAIN"
+echo "Enabling and starting iwater_bot..."
+sudo systemctl enable iwater_bot
+sudo systemctl restart iwater_bot
+
+if [ "$ENABLE_WEB" = "y" ] || [ "$ENABLE_WEB" = "Y" ]; then
+    echo "Enabling and starting iwater_web..."
+    sudo systemctl enable iwater_web
+    sudo systemctl restart iwater_web
+    echo "--- Setup Complete! ---"
+    echo "Bot status: sudo systemctl status iwater_bot"
+    echo "Web status: sudo systemctl status iwater_web"
+    echo "Caddy status: sudo systemctl status caddy"
+    echo "Your site should be live at: https://$DOMAIN"
+else
+    echo "Disabling iwater_web and caddy if they were active..."
+    sudo systemctl stop iwater_web 2>/dev/null || true
+    sudo systemctl disable iwater_web 2>/dev/null || true
+    sudo systemctl stop caddy 2>/dev/null || true
+    sudo systemctl disable caddy 2>/dev/null || true
+    echo "--- Setup Complete! ---"
+    echo "Bot status: sudo systemctl status iwater_bot"
+    echo "Web landing page has been skipped/disabled as requested."
+fi
