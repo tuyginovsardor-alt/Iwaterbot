@@ -93,7 +93,9 @@ async def get_setting(key, default=None):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
             row = await cursor.fetchone()
-            return row[0] if row else default
+            if row is not None and row[0] is not None:
+                return row[0]
+            return default
 
 async def set_setting(key, value):
     async with aiosqlite.connect(DB_PATH) as db:

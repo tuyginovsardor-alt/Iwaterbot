@@ -482,6 +482,8 @@ async def admin_manage_list(call: types.CallbackQuery):
     
     admins = list(ADMIN_IDS)
     extra_str = await db.get_setting('extra_admins', '')
+    if not extra_str:
+        extra_str = ""
     extra_ids = []
     if extra_str:
         extra_ids = [int(i.strip()) for i in extra_str.split(",") if i.strip().isdigit()]
@@ -530,11 +532,12 @@ async def del_extra_admin(call: types.CallbackQuery):
     aid_to_del = call.data.replace("del_extra_admin_", "")
     
     extra_str = await db.get_setting('extra_admins', '')
-    if extra_str:
-        ids = [i.strip() for i in extra_str.split(",") if i.strip()]
-        if aid_to_del in ids:
-            ids.remove(aid_to_del)
-        await db.set_setting('extra_admins', ",".join(ids))
+    if not extra_str:
+        extra_str = ""
+    ids = [i.strip() for i in extra_str.split(",") if i.strip()]
+    if aid_to_del in ids:
+        ids.remove(aid_to_del)
+    await db.set_setting('extra_admins', ",".join(ids))
         
     await call.answer("Admin muvaffaqiyatli o'chirildi!", show_alert=True)
     await admin_manage_list(call)
@@ -555,6 +558,8 @@ async def add_extra_admin_finish(message: types.Message, state: FSMContext):
         return
     
     extra_str = await db.get_setting('extra_admins', '')
+    if not extra_str:
+        extra_str = ""
     ids = [i.strip() for i in extra_str.split(",") if i.strip()]
     if val not in ids:
         ids.append(val)
