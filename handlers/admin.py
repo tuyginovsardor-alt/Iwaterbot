@@ -379,6 +379,13 @@ async def search_order_finish(message: types.Message, state: FSMContext, bot):
     if order[11]:
         details += f"\n⚠️ Sababi: {order[11]}"
         
+    recent_orders = await db.get_recent_active_orders(user_id, hours=2)
+    if order[0] in recent_orders:
+        recent_orders.remove(order[0])
+    if recent_orders:
+        linked_ids_str = ", ".join([f"#{oid:06d}" for oid in recent_orders])
+        details += f"\n\n🔗 **Qo'shimcha:** Ushbu mijozning oxirgi 2 soat ichida yana {len(recent_orders)} ta faol buyurtmasi mavjud! (ID: {linked_ids_str})"
+
     await message.answer(
         details, 
         reply_markup=inline.get_admin_order_kb(order[0], status=order[7], admin_name="Admin"),
@@ -867,3 +874,25 @@ async def admin_chat_message(message: types.Message, state: FSMContext, bot):
         await message.reply("✅ Yuborildi.")
     except Exception as e:
         await message.reply(f"❌ Xabar yuborishda xatolik: {e}")
+
+@router.message(Command("ban"))
+async def cmd_ban(message: types.Message):
+    if not await is_admin(message.from_user.id): return
+    args = message.text.split()
+    if len(args) != 2 or not args[1].isdigit():
+        await message.answer("Foydalanish: /ban <user_id>")
+        return
+    user_id = int(args[1])
+    await db.ban_user(user_id)
+    await message.answer(f"✅ Foydalanuvchi {user_id} ban qilindi.")
+
+@router.message(Command("unban"))
+async def cmd_unban(message: types.Message):
+    if not await is_admin(message.from_user.id): return
+    args = message.text.split()
+    if len(args) != 2 or not args[1].isdigit():
+        await message.answer("Foydalanish: /unban <user_id>")
+        return
+    user_id = int(args[1])
+    await db.unban_user(user_id)
+    await message.answer(f"✅ Foydalanuvchi {user_id} bandan chiqarildi.")

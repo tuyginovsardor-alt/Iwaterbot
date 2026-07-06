@@ -16,9 +16,16 @@ async def init_db():
                 full_name TEXT,
                 phone TEXT,
                 language TEXT DEFAULT 'uz',
-                order_count INTEGER DEFAULT 0
+                order_count INTEGER DEFAULT 0,
+                is_banned INTEGER DEFAULT 0
             )
         """)
+        
+        # Add is_banned if missing
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
+        except:
+            pass
         
         # Orders table
         await db.execute("""
@@ -275,3 +282,26 @@ async def get_admins():
                 except:
                     pass
     return admins
+
+async def ban_user(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+async def unban_user(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+async def get_recent_active_orders(user_id, hours=2):
+    async with aiosqlite.connect(DB_PATH) as db:
+        query = """
+            SELECT id FROM orders 
+            WHERE user_id = ? 
+              AND status IN ('new', 'accepted', 'pending_payment')
+              AND datetime(created_at) >= datetime('now', ?)
+            ORDER BY created_at DESC
+        """
+        async with db.execute(query, (user_id, f"-{hours} hours")) as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]

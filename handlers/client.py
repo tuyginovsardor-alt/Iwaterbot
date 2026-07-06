@@ -207,21 +207,41 @@ async def handle_quantity(call: types.CallbackQuery, state: FSMContext, bot: Bot
         quantity += 1
         await state.update_data(quantity=quantity)
         total = quantity * price
-        await call.message.edit_text(
-            MESSAGES[lang]['select_quantity'].format(total=total),
-            reply_markup=inline.get_quantity_kb(quantity, price, lang),
-            parse_mode="Markdown"
-        )
+        try:
+            await call.message.edit_caption(
+                caption=MESSAGES[lang]['select_quantity'].format(total=total),
+                reply_markup=inline.get_quantity_kb(quantity, price, lang),
+                parse_mode="Markdown"
+            )
+        except Exception:
+            try:
+                await call.message.edit_text(
+                    MESSAGES[lang]['select_quantity'].format(total=total),
+                    reply_markup=inline.get_quantity_kb(quantity, price, lang),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
     elif call.data == 'dec':
         if quantity > 1:
             quantity -= 1
             await state.update_data(quantity=quantity)
             total = quantity * price
-            await call.message.edit_text(
-                MESSAGES[lang]['select_quantity'].format(total=total),
-                reply_markup=inline.get_quantity_kb(quantity, price, lang),
-                parse_mode="Markdown"
-            )
+            try:
+                await call.message.edit_caption(
+                    caption=MESSAGES[lang]['select_quantity'].format(total=total),
+                    reply_markup=inline.get_quantity_kb(quantity, price, lang),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                try:
+                    await call.message.edit_text(
+                        MESSAGES[lang]['select_quantity'].format(total=total),
+                        reply_markup=inline.get_quantity_kb(quantity, price, lang),
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
     elif call.data == 'add_to_cart':
         await state.update_data(cart_quantity=quantity)
         await call.answer(MESSAGES[lang]['added_to_cart'])
@@ -231,6 +251,19 @@ async def handle_quantity(call: types.CallbackQuery, state: FSMContext, bot: Bot
         
         # Start reminder
         asyncio.create_task(abandoned_cart_reminder(bot, call.from_user.id, lang))
+
+@router.callback_query(F.data == 'clear_cart')
+async def clear_cart_handler(call: types.CallbackQuery, state: FSMContext):
+    user = await db.get_user(call.from_user.id)
+    lang = user[4] if user else 'uz'
+    await state.update_data(cart_quantity=0)
+    
+    try:
+        await call.message.edit_text(MESSAGES[lang]['cart_empty'], parse_mode="Markdown")
+    except Exception:
+        await call.message.delete()
+        await call.message.answer(MESSAGES[lang]['cart_empty'], parse_mode="Markdown")
+    await call.answer(MESSAGES[lang]['cart_empty'])
 
 @router.callback_query(F.data == 'open_cart')
 async def open_cart_callback(call: types.CallbackQuery, state: FSMContext):
@@ -361,6 +394,16 @@ async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot:
     await call.message.answer(final_msg, reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
     await state.set_state(ClientStates.main_menu)
     
+    # Check for recent active orders
+    recent_orders = await db.get_recent_active_orders(call.from_user.id, hours=2)
+    linked_orders_text = ""
+    # remove current order_id from recent orders if exists
+    if order_id in recent_orders:
+        recent_orders.remove(order_id)
+    if recent_orders:
+        linked_ids_str = ", ".join([f"#{oid:06d}" for oid in recent_orders])
+        linked_orders_text = f"\n\n🔗 **DIQQAT! Mijozning oxirgi 2 soat ichida yana {len(recent_orders)} ta faol buyurtmasi bor! Bularni birga yetkazish mumkin.**\nBog'langan ID: {linked_ids_str}"
+
     # Notify admins
     username = call.from_user.username
     profile_link = f"[@{username}](https://t.me/{username})" if username else f"[Lichka](tg://user?id={call.from_user.id})"
@@ -369,9 +412,9 @@ async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot:
             await bot.send_message(
                 admin_id,
                 MESSAGES['uz']['new_order_admin'].format(
-                    id=order_id, name=user[2], profile_link=profile_link, phone=user[3],
+                    id=f"{order_id:06d}", name=user[2], profile_link=profile_link, phone=user[3],
                     quantity=quantity, total=total, address=data['order_address'], payment=payment_type
-                ) + f"\n\n{data.get('dist_info', '')}",
+                ) + f"\n\n{data.get('dist_info', '')}" + linked_orders_text,
                 reply_markup=inline.get_admin_order_kb(order_id),
                 parse_mode="Markdown"
             )

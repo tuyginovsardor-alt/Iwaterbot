@@ -2,6 +2,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
+from database import db
 
 class ThrottlingMiddleware(BaseMiddleware):
     def __init__(self, slow_mode_delay: float = 0.5):
@@ -16,6 +17,14 @@ class ThrottlingMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         user_id = event.from_user.id
+        
+        # Check if user is banned
+        user = await db.get_user(user_id)
+        if user and len(user) > 6 and user[6] == 1:
+            if isinstance(event, CallbackQuery):
+                await event.answer("❌ Siz ban qilingansiz! / Вы забанены!", show_alert=True)
+            return
+            
         now = time.time()
         
         if user_id in self.cache:
