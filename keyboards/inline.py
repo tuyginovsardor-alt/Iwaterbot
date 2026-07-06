@@ -67,9 +67,14 @@ def get_admin_order_kb(order_id, status='new', admin_name=None):
             ]
         )
 
-def get_admin_settings_kb(lang, manual_on=False, web_on=True):
+def get_admin_settings_kb(lang, manual_on=False, web_on=True, user_id=None):
     status_text = "✅ ON" if manual_on else "❌ OFF"
     web_status_text = "✅ ON" if web_on else "❌ OFF"
+    
+    admin_row = [InlineKeyboardButton(text="👥 Adminlarni boshqarish", callback_data="admin_manage")]
+    if user_id is not None and str(user_id) == "8021115446":
+        admin_row.append(InlineKeyboardButton(text="👑 Yaratuvchi (1978)", callback_data="admin_creator_settings"))
+        
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=MESSAGES[lang]['set_price_btn'], callback_data="set_price")],
@@ -85,10 +90,7 @@ def get_admin_settings_kb(lang, manual_on=False, web_on=True):
                 InlineKeyboardButton(text="📜 Shartlar (UZ)", callback_data="edit_terms_uz_btn"),
                 InlineKeyboardButton(text="📜 Shartlar (RU)", callback_data="edit_terms_ru_btn")
             ],
-            [
-                InlineKeyboardButton(text="👥 Adminlarni boshqarish", callback_data="admin_manage"),
-                InlineKeyboardButton(text="👑 Yaratuvchi (1978)", callback_data="admin_creator_settings")
-            ],
+            admin_row,
             [
                 InlineKeyboardButton(text="💧 Suv eslatmasi (Reklama) yuborish", callback_data="admin_send_water_reminder")
             ]

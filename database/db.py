@@ -53,8 +53,19 @@ async def init_db():
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('web_site_status', '1')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('terms_uz', 'Rasmiy shartlar matni (UZ)')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('terms_ru', 'Официальный текст условий (RU)')")
-        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_msg_uz', '👋 Assalomu alaykum! **iWater** xizmatiga xush kelibsiz.\n✨ Toza va sifatli 19L suv yetkazib berish.\n\n👇 Davom etish uchun tilni tanlang:')")
-        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_msg_ru', '👋 Здравствуйте! Добро пожаловать в сервис **iWater**.\n✨ Доставка чистой и качественной 19л воды.\n\n👇 Для продолжения выберите язык:')")
+        
+        welcome_uz = "👋 **Assalomu alaykum!**\n\n💧 **iWater** — xonadoningiz va ofisingiz uchun 19 litrli toza, tabiiy hamda sifatli ichimlik suvi yetkazib berish xizmatining rasmiy botiga xush kelibsiz!\n\nBizning maqsadimiz — sizga eng toza suvni, eng qulay narxlarda va eng qisqa vaqt ichida yetkazib berishdir. 🚚💨\n\n👇 **Bot imkoniyatlaridan to'liq foydalanish uchun davom etish tilini tanlang:**"
+        welcome_ru = "👋 **Здравствуйте!**\n\n💧 Добро пожаловать в официальный бот службы доставки **iWater** — чистой, природной и качественной питьевой воды объемом 19 литров для вашего дома и офиса!\n\nНаша цель — предоставить вам самую чистую воду по максимально доступным ценам и в кратчайшие сроки! 🚚💨\n\n👇 **Для полноценного использования бота, пожалуйста, выберите удобный язык:**"
+        
+        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_msg_uz', ?)", (welcome_uz,))
+        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_msg_ru', ?)", (welcome_ru,))
+        
+        # Update old defaults to the new professional ones if they are still the old ones
+        old_uz = "👋 Assalomu alaykum! **iWater** xizmatiga xush kelibsiz.\n✨ Toza va sifatli 19L suv yetkazib berish.\n\n👇 Davom etish uchun tilni tanlang:"
+        old_ru = "👋 Здравствуйте! Добро пожаловать в сервис **iWater**.\n✨ Доставка чистой и качественной 19л воды.\n\n👇 Для продолжения выберите язык:"
+        await db.execute("UPDATE settings SET value = ? WHERE key = 'welcome_msg_uz' AND value = ?", (welcome_uz, old_uz))
+        await db.execute("UPDATE settings SET value = ? WHERE key = 'welcome_msg_ru' AND value = ?", (welcome_ru, old_ru))
+        
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('warehouse_lat', '41.2995')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('warehouse_lon', '69.2401')")
         

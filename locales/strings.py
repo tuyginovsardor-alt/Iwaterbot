@@ -1,6 +1,6 @@
 MESSAGES = {
     'uz': {
-        'start': "👋 Assalomu alaykum! **iWater** xizmatiga xush kelibsiz.\n✨ Toza va sifatli 19L suv yetkazib berish.\n\n👇 Davom etish uchun tilni tanlang:",
+        'start': "👋 **Assalomu alaykum!**\n\n💧 **iWater** — xonadoningiz va ofisingiz uchun 19 litrli toza, tabiiy hamda sifatli ichimlik suvi yetkazib berish xizmatining rasmiy botiga xush kelibsiz!\n\nBizning maqsadimiz — sizga eng toza suvni, eng qulay narxlarda va eng qisqa vaqt ichida yetkazib berishdir. 🚚💨\n\n👇 **Bot imkoniyatlaridan to'liq foydalanish uchun davom etish tilini tanlang:**",
         'share_phone': "📱 Iltimos, **telefon raqamingizni** yuboring yoki quyidagi formatda yozing:\n`+998XXXXXXXXX`",
         'phone_btn': "📲 Raqamni ulashish",
         'phone_error': "❌ Noto'g'ri format! Iltimos, raqamni quyidagicha yuboring: `+998901234567`",
@@ -82,7 +82,7 @@ MESSAGES = {
         'cart_timer_set': "Savatda suv qoldi..."
     },
     'ru': {
-        'start': "👋 Здравствуйте! Добро пожаловать в сервис **iWater**.\n✨ Доставка чистой и качественной 19л воды.\n\n👇 Для продолжения выберите язык:",
+        'start': "👋 **Здравствуйте!**\n\n💧 Добро пожаловать в официальный бот службы доставки **iWater** — чистой, природной и качественной питьевой воды объемом 19 литров для вашего дома и офиса!\n\nНаша цель — предоставить вам самую чистую воду по максимально доступным ценам и в кратчайшие сроки! 🚚💨\n\n👇 **Для полноценного использования бота, пожалуйста, выберите удобный язык:**",
         'share_phone': "📱 Пожалуйста, отправьте ваш **номер телефона** или напишите в формате:\n`+998XXXXXXXXX`",
         'phone_btn': "📲 Поделиться номером",
         'phone_error': "❌ Неверный формат! Пожалуйста, отправьте номер так: `+998901234567`",

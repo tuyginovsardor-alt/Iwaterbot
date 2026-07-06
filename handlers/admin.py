@@ -178,7 +178,7 @@ async def show_settings(message: types.Message):
     price = await db.get_setting('water_price')
     await message.answer(
         f"⚙️ **Bot Sozlamalari**\n\n💰 Hozirgi narx: {price} so'm",
-        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on),
+        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on, user_id=message.from_user.id),
         parse_mode="Markdown"
     )
 
@@ -191,7 +191,7 @@ async def toggle_web(call: types.CallbackQuery):
     
     manual_on = (await db.get_setting('manual_payment_status')) == '1'
     web_on = new_status == '1'
-    await call.message.edit_reply_markup(reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on))
+    await call.message.edit_reply_markup(reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on, user_id=call.from_user.id))
     await call.answer(f"Veb-sayt rejimi {'yoqildi' if web_on else 'o‘chirildi'}!")
 
 @router.callback_query(F.data == "toggle_payment")
@@ -203,7 +203,7 @@ async def toggle_payment(call: types.CallbackQuery):
     
     manual_on = new_status == '1'
     web_on = (await db.get_setting('web_site_status')) == '1'
-    await call.message.edit_reply_markup(reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on))
+    await call.message.edit_reply_markup(reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on, user_id=call.from_user.id))
     await call.answer(MESSAGES['uz']['payment_mode_updated'].format(status="ON" if manual_on else "OFF"))
 
 @router.callback_query(F.data == "set_price")
@@ -520,7 +520,7 @@ async def admin_back_to_settings(call: types.CallbackQuery):
     price = await db.get_setting('water_price')
     await call.message.edit_text(
         f"⚙️ **Bot Sozlamalari**\n\n💰 Hozirgi narx: {price} so'm",
-        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on),
+        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on, user_id=call.from_user.id),
         parse_mode="Markdown"
     )
 
@@ -567,6 +567,13 @@ async def add_extra_admin_finish(message: types.Message, state: FSMContext):
     await admin_cmd(message)
 
 # --- Bot Creator / Developer Settings ---
+@router.message(~StateFilter(AdminStates.edit_creator_auth), Command("setup1978", "creator_setup"))
+@router.message(~StateFilter(AdminStates.edit_creator_auth), F.text == "1978")
+async def admin_creator_settings_command(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    await message.answer("🔐 **Yaratuvchi ma'lumotlarini tahrirlash**\n\nIltimos, davom etish uchun maxsus **1978** parolini kiriting:")
+    await state.set_state(AdminStates.edit_creator_auth)
+
 @router.callback_query(F.data == "admin_creator_settings")
 async def admin_creator_settings_start(call: types.CallbackQuery, state: FSMContext):
     if not await is_admin(call.from_user.id): return
@@ -683,7 +690,7 @@ async def confirm_send_water_reminder(call: types.CallbackQuery, bot):
     price = await db.get_setting('water_price')
     await call.message.answer(
         f"⚙️ **Bot Sozlamalari**\n\n💰 Hozirgi narx: {price} so'm",
-        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on),
+        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on, user_id=call.from_user.id),
         parse_mode="Markdown"
     )
     await call.message.delete()

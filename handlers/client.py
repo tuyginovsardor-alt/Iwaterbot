@@ -55,11 +55,13 @@ async def start_cmd(message: types.Message, state: FSMContext, bot: Bot):
     if not caption:
         caption = MESSAGES[lang]['start'] if not user else MESSAGES[lang]['main_menu']
     
+    caption_with_more = caption + "\n\nℹ️ More info: /more"
+    
     if images:
         img = random.choice(images)
-        await message.answer_photo(img, caption=caption, reply_markup=reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang), parse_mode="Markdown")
+        await message.answer_photo(img, caption=caption_with_more, reply_markup=reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang), parse_mode="Markdown")
     else:
-        await message.answer(caption, reply_markup=reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang), parse_mode="Markdown")
+        await message.answer(caption_with_more, reply_markup=reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang), parse_mode="Markdown")
     
     if not user:
         await state.set_state(ClientStates.language)
@@ -456,6 +458,36 @@ async def show_creator_cmd(message: types.Message):
         [InlineKeyboardButton(text="💬 Bog'lanish", url=f"https://t.me/{username.replace('@', '')}")]
     ])
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.message(Command("more"))
+async def show_more_cmd(message: types.Message):
+    user = await db.get_user(message.from_user.id)
+    lang = user[4] if user else 'uz'
+    
+    welcome_db_key = f'welcome_msg_{lang}'
+    caption = await db.get_setting(welcome_db_key)
+    if not caption:
+        caption = MESSAGES[lang]['start']
+        
+    username = await db.get_setting('creator_username', '@iwater_dev')
+    comment = await db.get_setting('creator_comment', "iWater botining rasmiy yaratuvchisi.")
+    
+    creator_text = (
+        f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👑 **Bot Yaratuvchisi (Dasturchi):**\n"
+        f"💻 **Dasturchi:** {username}\n"
+        f"📝 **Izoh:** {comment}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✨ *Muammo yoki takliflar yuzasidan murojaat qilishingiz mumkin.*"
+    )
+    
+    full_text = caption + creator_text
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Bog'lanish", url=f"https://t.me/{username.replace('@', '')}")]
+    ])
+    await message.answer(full_text, reply_markup=kb, parse_mode="Markdown")
 
 @router.message(F.text.in_([MESSAGES['uz']['back_btn'], MESSAGES['ru']['back_btn']]))
 async def universal_back(message: types.Message, state: FSMContext):
