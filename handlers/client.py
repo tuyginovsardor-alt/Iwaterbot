@@ -85,13 +85,14 @@ async def set_lang(message: types.Message, state: FSMContext, bot: Bot):
     if is_new:
         admins = await db.get_admins()
         username_str = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
+        lang_name = "O'zbekcha" if lang == 'uz' else "Ruscha"
         text = (
             "🔔 **Yangi foydalanuvchi qo'shildi!**\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 **Ism:** {message.from_user.full_name}\n"
             f"🆔 **ID:** `{message.from_user.id}`\n"
             f"🌐 **Username:** {username_str}\n"
-            f"🇺🇿 **Tanlangan til:** {'O\'zbekcha' if lang == 'uz' else 'Ruscha'}\n"
+            f"🇺🇿 **Tanlangan til:** {lang_name}\n"
             "━━━━━━━━━━━━━━━━━━━━━━"
         )
         for admin_id in admins:
@@ -117,8 +118,17 @@ async def set_phone(message: types.Message, state: FSMContext):
     phone = None
     if message.contact:
         phone = message.contact.phone_number
-    elif message.text and re.match(PHONE_REGEX, message.text):
-        phone = message.text
+        if not phone.startswith('+'):
+            phone = '+' + phone
+    elif message.text:
+        # Clean any spaces, dashes or parentheses
+        text = re.sub(r"[\s\-\(\)]", "", message.text)
+        if re.match(r"^998\d{9}$", text):
+            phone = "+" + text
+        elif re.match(r"^\+998\d{9}$", text):
+            phone = text
+        elif re.match(r"^\d{9}$", text):
+            phone = "+998" + text
     
     if not phone:
         await message.answer(MESSAGES[lang]['phone_error'], parse_mode="Markdown")
@@ -183,9 +193,29 @@ async def handle_quantity(call: types.CallbackQuery, state: FSMContext, bot: Bot
         await call.answer(MESSAGES[lang]['added_to_cart'])
         await call.message.delete()
         await call.message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
+        await call.message.answer(MESSAGES[lang]['added_to_cart_detailed'], reply_markup=inline.get_added_to_cart_kb(lang), parse_mode="Markdown")
         
         # Start reminder
         asyncio.create_task(abandoned_cart_reminder(bot, call.from_user.id, lang))
+
+@router.callback_query(F.data == 'open_cart')
+async def open_cart_callback(call: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    quantity = data.get('cart_quantity', 0)
+    user = await db.get_user(call.from_user.id)
+    lang = user[4]
+    price = int(await db.get_setting('water_price', 15000))
+    
+    if quantity == 0:
+        await call.message.answer(MESSAGES[lang]['cart_empty'], parse_mode="Markdown")
+    else:
+        total = quantity * price
+        await call.message.answer(
+            MESSAGES[lang]['cart_content'].format(price=f"{price:,}", quantity=quantity, total=f"{total:,}"),
+            reply_markup=inline.get_cart_kb(lang),
+            parse_mode="Markdown"
+        )
+    await call.answer()
 
 @router.message(F.text.in_([MESSAGES['uz']['cart_btn'], MESSAGES['ru']['cart_btn']]))
 async def view_cart(message: types.Message, state: FSMContext):
@@ -200,7 +230,7 @@ async def view_cart(message: types.Message, state: FSMContext):
     else:
         total = quantity * price
         await message.answer(
-            MESSAGES[lang]['cart_content'].format(quantity=quantity, total=total),
+            MESSAGES[lang]['cart_content'].format(price=f"{price:,}", quantity=quantity, total=f"{total:,}"),
             reply_markup=inline.get_cart_kb(lang),
             parse_mode="Markdown"
         )
@@ -298,12 +328,14 @@ async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot:
     await state.set_state(ClientStates.main_menu)
     
     # Notify admins
+    username = call.from_user.username
+    profile_link = f"[@{username}](https://t.me/{username})" if username else f"[Lichka](tg://user?id={call.from_user.id})"
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(
                 admin_id,
                 MESSAGES['uz']['new_order_admin'].format(
-                    id=order_id, name=user[2], phone=user[3],
+                    id=order_id, name=user[2], profile_link=profile_link, phone=user[3],
                     quantity=quantity, total=total, address=data['order_address'], payment=payment_type
                 ) + f"\n\n{data.get('dist_info', '')}",
                 reply_markup=inline.get_admin_order_kb(order_id),
@@ -489,6 +521,16 @@ async def show_more_cmd(message: types.Message):
     ])
     await message.answer(full_text, reply_markup=kb, parse_mode="Markdown")
 
+@router.message(F.text.in_([MESSAGES['uz']['terms_btn'], MESSAGES['ru']['terms_btn']]))
+async def show_terms(message: types.Message):
+    user = await db.get_user(message.from_user.id)
+    lang = user[4] if user else 'uz'
+    terms_key = f'terms_{lang}'
+    terms_text = await db.get_setting(terms_key)
+    if not terms_text:
+        terms_text = "Shartlar va maxfiylik kelishuvi hali kiritilmagan." if lang == 'uz' else "Пользовательское соглашение еще не указано."
+    await message.answer(terms_text, parse_mode="Markdown")
+
 @router.message(F.text.in_([MESSAGES['uz']['back_btn'], MESSAGES['ru']['back_btn']]))
 async def universal_back(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
@@ -505,3 +547,50 @@ async def universal_back(message: types.Message, state: FSMContext):
     else:
         await message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang))
         await state.set_state(ClientStates.main_menu)
+
+@router.message(ClientStates.in_chat)
+async def customer_chat_message(message: types.Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    admin_id = data.get('chat_admin_id')
+    user = await db.get_user(message.from_user.id)
+    lang = user[4] if user else 'uz'
+    
+    # Check if they want to close the chat
+    if message.text and (message.text.lower() in ["/close", "close_chat", "chatni yopish", "закрыть чат"]):
+        await state.clear()
+        from main import dp
+        if admin_id:
+            admin_state = dp.fsm.resolve_context(bot, admin_id, admin_id)
+            await admin_state.clear()
+            try:
+                await bot.send_message(admin_id, "❌ **Mijoz chatni yopdi.**", reply_markup=reply.get_admin_menu_kb())
+            except:
+                pass
+        
+        close_msg = "❌ Chat yopildi." if lang == 'uz' else "❌ Чат закрыт."
+        await message.answer(close_msg, reply_markup=reply.get_main_menu_kb(lang))
+        return
+
+    if not admin_id:
+        from config import ADMIN_IDS
+        if ADMIN_IDS:
+            admin_id = ADMIN_IDS[0]
+        else:
+            return
+        
+    cust_name = message.from_user.full_name
+    text_to_send = f"💬 **Mijoz ({cust_name}):** {message.text}" if message.text else f"💬 **Mijoz ({cust_name}) rasm/fayl yubordi**"
+    
+    try:
+        if message.text:
+            await bot.send_message(admin_id, text_to_send, parse_mode="Markdown")
+        elif message.photo:
+            await bot.send_photo(admin_id, message.photo[-1].file_id, caption=text_to_send, parse_mode="Markdown")
+        elif message.voice:
+            await bot.send_voice(admin_id, message.voice.file_id, caption=text_to_send, parse_mode="Markdown")
+        else:
+            await bot.send_message(admin_id, f"⚠️ Mijozdan qo'llab-quvvatlanmaydigan xabar turi keldi.")
+            
+        await message.reply("✅" if lang == 'uz' else "✅")
+    except Exception as e:
+        await message.reply(f"❌" if lang == 'uz' else "❌")

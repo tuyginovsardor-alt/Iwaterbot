@@ -22,6 +22,13 @@ def get_cart_kb(lang):
         ]
     )
 
+def get_added_to_cart_kb(lang):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=MESSAGES[lang]['open_cart_btn'], callback_data="open_cart")]
+        ]
+    )
+
 def get_payment_kb(lang, manual_on=False):
     kb = [[InlineKeyboardButton(text=MESSAGES[lang]['payment_cash'], callback_data="pay_cash")]]
     if manual_on:
@@ -34,7 +41,9 @@ def get_admin_order_kb(order_id, status='new', admin_name=None):
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✅ Qabul qilish / Принять", callback_data=f"order_accept_{order_id}")],
-                [InlineKeyboardButton(text="❌ Rad etish / Отказать", callback_data=f"order_reject_{order_id}")]
+                [InlineKeyboardButton(text="❌ Rad etish / Отказать", callback_data=f"order_reject_{order_id}")],
+                [InlineKeyboardButton(text="💬 Chatni ochish / Чат", callback_data=f"order_chat_{order_id}")],
+                [InlineKeyboardButton(text="🗑 O'chirish (Baza/Statistika)", callback_data=f"order_delete_{order_id}")]
             ]
         )
     elif status == 'accepted':
@@ -42,7 +51,9 @@ def get_admin_order_kb(order_id, status='new', admin_name=None):
             inline_keyboard=[
                 [InlineKeyboardButton(text=f"👨‍💻 {admin_name}", callback_data="noop")],
                 [InlineKeyboardButton(text="🚚 Yo'lda / В пути", callback_data=f"order_way_{order_id}")],
-                [InlineKeyboardButton(text="❌ Bekor qilish / Отмена", callback_data=f"order_reject_{order_id}")]
+                [InlineKeyboardButton(text="❌ Bekor qilish / Отмена", callback_data=f"order_reject_{order_id}")],
+                [InlineKeyboardButton(text="💬 Chatni ochish / Чат", callback_data=f"order_chat_{order_id}")],
+                [InlineKeyboardButton(text="🗑 O'chirish (Baza/Statistika)", callback_data=f"order_delete_{order_id}")]
             ]
         )
     elif status == 'on_the_way':
@@ -50,20 +61,24 @@ def get_admin_order_kb(order_id, status='new', admin_name=None):
             inline_keyboard=[
                 [InlineKeyboardButton(text=f"👨‍💻 {admin_name}", callback_data="noop")],
                 [InlineKeyboardButton(text="🏁 Yetkazildi / Доставлено", callback_data=f"order_done_{order_id}")],
-                [InlineKeyboardButton(text="❌ Bekor qilish / Отмена", callback_data=f"order_reject_{order_id}")]
+                [InlineKeyboardButton(text="❌ Bekor qilish / Отмена", callback_data=f"order_reject_{order_id}")],
+                [InlineKeyboardButton(text="💬 Chatni ochish / Чат", callback_data=f"order_chat_{order_id}")],
+                [InlineKeyboardButton(text="🗑 O'chirish (Baza/Statistika)", callback_data=f"order_delete_{order_id}")]
             ]
         )
     elif status == 'pending_payment':
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✅ To'lovni tasdiqlash", callback_data=f"check_confirm_{order_id}")],
-                [InlineKeyboardButton(text="❌ Chekni rad etish", callback_data=f"check_reject_{order_id}")]
+                [InlineKeyboardButton(text="❌ Chekni rad etish", callback_data=f"check_reject_{order_id}")],
+                [InlineKeyboardButton(text="🗑 O'chirish (Baza/Statistika)", callback_data=f"order_delete_{order_id}")]
             ]
         )
     else:
         return InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"✅ {admin_name} yakunladi", callback_data="noop")]
+                [InlineKeyboardButton(text=f"✅ {admin_name} yakunladi", callback_data="noop")],
+                [InlineKeyboardButton(text="🗑 O'chirish (Baza/Statistika)", callback_data=f"order_delete_{order_id}")]
             ]
         )
 

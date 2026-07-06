@@ -8,6 +8,7 @@ class ClientStates(StatesGroup):
     location = State()
     payment_type = State()
     upload_check = State()
+    in_chat = State()
 
 class AdminStates(StatesGroup):
     mailing = State()
@@ -24,3 +25,4 @@ class AdminStates(StatesGroup):
     add_admin = State()
     edit_creator_auth = State()
     edit_creator_info = State()
+    in_chat = State()

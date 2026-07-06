@@ -216,6 +216,11 @@ async def get_order(order_id):
         async with db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)) as cursor:
             return await cursor.fetchone()
 
+async def delete_order(order_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+        await db.commit()
+
 async def get_stats():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users") as cursor:

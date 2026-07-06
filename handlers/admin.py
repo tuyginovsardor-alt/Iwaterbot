@@ -40,7 +40,7 @@ async def admin_cmd(message: types.Message):
         return
     await message.answer("Admin paneliga xush kelibsiz!", reply_markup=reply.get_admin_menu_kb())
 
-@router.message(F.text == MESSAGES['uz']['admin_stats_btn'])
+@router.message(F.text.in_([MESSAGES['uz']['admin_stats_btn'], MESSAGES['ru']['admin_stats_btn']]))
 async def show_stats(message: types.Message):
     if not await is_admin(message.from_user.id):
         return
@@ -169,7 +169,7 @@ async def edit_terms_finish(message: types.Message, state: FSMContext):
     await state.clear()
     await admin_cmd(message)
 
-@router.message(F.text == MESSAGES['uz']['admin_settings_btn'])
+@router.message(F.text.in_([MESSAGES['uz']['admin_settings_btn'], MESSAGES['ru']['admin_settings_btn']]))
 async def show_settings(message: types.Message):
     if not await is_admin(message.from_user.id):
         return
@@ -257,15 +257,67 @@ async def edit_welcome_ru_finish(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "edit_terms_uz_btn")
 async def edit_terms_uz_start(call: types.CallbackQuery, state: FSMContext):
     if not await is_admin(call.from_user.id): return
-    await call.message.answer(MESSAGES['uz']['enter_terms_text'])
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💡 Tayyor andozani yuklash (500 belgi)", callback_data="load_template_terms_uz")]
+    ])
+    await call.message.answer(
+        f"{MESSAGES['uz']['enter_terms_text']}\n\n"
+        f"💡 **Yordamchi funksiya:** Agar tayyor professional shartlar va maxfiylik matnini (taxminan 500 belgili) yuklamoqchi bo'lsangiz, quyidagi tugmani bosing:",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
     await state.set_state(AdminStates.edit_terms)
     await call.answer()
 
 @router.callback_query(F.data == "edit_terms_ru_btn")
 async def edit_terms_ru_start(call: types.CallbackQuery, state: FSMContext):
     if not await is_admin(call.from_user.id): return
-    await call.message.answer(MESSAGES['uz']['enter_terms_ru'])
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💡 Загрузить готовый шаблон (500 симв.)", callback_data="load_template_terms_ru")]
+    ])
+    await call.message.answer(
+        f"{MESSAGES['uz']['enter_terms_ru']}\n\n"
+        f"💡 **Помощник:** Если вы хотите загрузить готовый профессиональный шаблон условий использования (около 500 символов), нажмите кнопку ниже:",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
     await state.set_state(AdminStates.edit_terms_ru)
+    await call.answer()
+
+@router.callback_query(F.data == "load_template_terms_uz")
+async def load_template_terms_uz(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    template_uz = (
+        "🔒 **Foydalanish shartlari va Maxfiylik kelishuvi**\n\n"
+        "1. **Maqsad:** Mazkur bot 19 litrli toza ichimlik suvi buyurtma qilish va yetkazib berish xizmatini taqdim etadi.\n"
+        "2. **Shaxsiy ma'lumotlar:** Foydalanuvchining ismi, telefon raqami va manzili faqatgina buyurtmani tasdiqlash hamda yetkazib berish maqsadida yig'iladi va uchinchi shaxslarga berilmaydi.\n"
+        "3. **Yetkazib berish:** Suv buyurtma berilgan vaqtdan boshlab 45 daqiqa ichida bepul yetkazib beriladi.\n"
+        "4. **To'lov:** To'lov naqd pul yoki karta orqali amalga oshiriladi.\n"
+        "5. **Mijoz majburiyati:** Buyurtma berilganda faol va to'g'ri bog'lanish ma'lumotlari taqdim etilishi shart."
+    )
+    await db.set_setting('terms_uz', template_uz)
+    await call.message.answer("✅ **Foydalanish shartlari (UZ) tayyor andozasi muvaffaqiyatli saqlandi!**", parse_mode="Markdown")
+    await state.clear()
+    await admin_cmd(call.message)
+    await call.answer()
+
+@router.callback_query(F.data == "load_template_terms_ru")
+async def load_template_terms_ru(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    template_ru = (
+        "🔒 **Пользовательское соглашение и Политика конфиденциальности**\n\n"
+        "1. **Цель:** Настоящий бот предоставляет услуги заказа и доставки 19-литровой чистой питьевой воды.\n"
+        "2. **Персональные данные:** Имя, номер телефона и адрес пользователя собираются исключительно для подтверждения и доставки заказа и не передаются третьим лицам.\n"
+        "3. **Доставка:** Вода доставляется бесплатно в течение 45 минут с момента подтверждения заказа.\n"
+        "4. **Оплата:** Оплата производится наличными при получении или картой через платежные системы.\n"
+        "5. **Обязанности:** Пользователь обязуется указывать точные контактные данные при оформлении заказа."
+    )
+    await db.set_setting('terms_ru', template_ru)
+    await call.message.answer("✅ **Шаблон пользовательского соглашения (RU) успешно сохранен!**", parse_mode="Markdown")
+    await state.clear()
+    await admin_cmd(call.message)
     await call.answer()
 
 @router.message(AdminStates.edit_terms_ru)
@@ -276,7 +328,7 @@ async def edit_terms_ru_finish(message: types.Message, state: FSMContext):
     await state.clear()
     await admin_cmd(message)
 
-@router.message(F.text == MESSAGES['uz']['admin_search_order_btn'])
+@router.message(F.text.in_([MESSAGES['uz']['admin_search_order_btn'], MESSAGES['ru']['admin_search_order_btn']]))
 async def search_order_start(message: types.Message, state: FSMContext):
     if not await is_admin(message.from_user.id): return
     await message.answer(MESSAGES['uz']['enter_search_order_id'])
@@ -341,7 +393,7 @@ async def search_order_finish(message: types.Message, state: FSMContext, bot):
             
     await state.clear()
 
-@router.message(F.text == MESSAGES['uz']['admin_mailing_btn'])
+@router.message(F.text.in_([MESSAGES['uz']['admin_mailing_btn'], MESSAGES['ru']['admin_mailing_btn']]))
 async def start_mailing(message: types.Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
         return
@@ -365,7 +417,7 @@ async def handle_mailing(message: types.Message, state: FSMContext, bot):
     await message.answer(MESSAGES['uz']['mailing_done'].format(count=count))
     await state.clear()
 
-@router.callback_query(F.data.startswith("order_"))
+@router.callback_query(F.data.startswith("order_") & ~F.data.startswith("order_chat_"))
 async def manage_order(call: types.CallbackQuery, state: FSMContext, bot):
     if not await is_admin(call.from_user.id):
         await call.answer("Siz admin emassiz!", show_alert=True)
@@ -380,6 +432,12 @@ async def manage_order(call: types.CallbackQuery, state: FSMContext, bot):
         await call.answer("Buyurtma topilmadi!")
         return
     
+    if action == "delete":
+        await db.delete_order(order_id)
+        await call.message.edit_text(f"🗑 **#{order_id}-sonli buyurtma ma'lumotlar bazasidan va statistikadan butunlay o'chirib tashlandi!**", parse_mode="Markdown")
+        await call.answer("Buyurtma o'chirildi!", show_alert=True)
+        return
+
     if action == "reject":
         await call.message.answer(MESSAGES['uz']['enter_rejection_reason'])
         await state.update_data(reject_order_id=order_id)
@@ -647,8 +705,10 @@ async def admin_send_water_reminder_prompt(call: types.CallbackQuery):
     )
 
 @router.callback_query(F.data == "confirm_send_water_reminder")
-async def confirm_send_water_reminder(call: types.CallbackQuery, bot):
+async def confirm_send_water_reminder(call: types.CallbackQuery, bot=None):
     if not await is_admin(call.from_user.id): return
+    if bot is None:
+        bot = call.bot
     await call.message.edit_text("⏳ Eslatmalar barcha foydalanuvchilarga yuborilmoqda, iltimos kuting...")
     
     import asyncio
@@ -699,3 +759,111 @@ async def confirm_send_water_reminder(call: types.CallbackQuery, bot):
         parse_mode="Markdown"
     )
     await call.message.delete()
+
+# --- CHAT handlers ---
+from states.fsm_states import ClientStates
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+@router.callback_query(F.data.startswith("order_chat_"))
+async def open_order_chat(call: types.CallbackQuery, state: FSMContext, bot):
+    if not await is_admin(call.from_user.id): return
+    
+    order_id = int(call.data.split("_")[2])
+    order = await db.get_order(order_id)
+    if not order:
+        await call.answer("Buyurtma topilmadi!")
+        return
+        
+    customer_id = order[1]
+    
+    # Enter admin chat state
+    await state.update_data(chat_customer_id=customer_id, chat_order_id=order_id)
+    await state.set_state(AdminStates.in_chat)
+    
+    # Also resolve customer FSM Context and set them in chat state
+    from main import dp
+    customer_state = dp.fsm.resolve_context(bot, customer_id, customer_id)
+    await customer_state.set_state(ClientStates.in_chat)
+    await customer_state.update_data(chat_admin_id=call.from_user.id)
+    
+    # Build inline keyboard to close chat
+    close_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Chatni yopish / Закрыть чат", callback_data="close_chat")]
+    ])
+    
+    # Send messages to admin and customer
+    await call.message.answer(
+        f"💬 **Buyurtma #{order_id} bo'yicha mijoz bilan chat ochildi!**\n\n"
+        f"Siz yozgan xabarlar mijozga yuboriladi. Chatni yopish uchun pastdagi tugmani bosing.",
+        reply_markup=close_kb,
+        parse_mode="Markdown"
+    )
+    
+    user_data = await db.get_user(customer_id)
+    lang = user_data[4] if user_data else 'uz'
+    
+    if lang == 'uz':
+        cust_msg = f"💬 **Buyurtmangiz (#{order_id}) bo'yicha operator siz bilan aloqaga chiqdi.**\n\nSavollaringiz yoki xabarlaringiz bo'lsa, shu yerda yozishingiz mumkin. Operator javob beradi."
+    else:
+        cust_msg = f"💬 **Оператор связался с вами по вашему заказу (#{order_id}).**\n\nЕсли у вас есть вопросы или сообщения, вы можете писать здесь. Оператор ответит."
+        
+    try:
+        await bot.send_message(customer_id, cust_msg, parse_mode="Markdown")
+    except:
+        pass
+    await call.answer()
+
+@router.callback_query(F.data == "close_chat")
+async def close_chat_callback(call: types.CallbackQuery, state: FSMContext, bot):
+    data = await state.get_data()
+    customer_id = data.get('chat_customer_id')
+    
+    # Clear admin state
+    await state.clear()
+    
+    if customer_id:
+        from main import dp
+        customer_state = dp.fsm.resolve_context(bot, customer_id, customer_id)
+        await customer_state.clear()
+        
+        user_data = await db.get_user(customer_id)
+        lang = user_data[4] if user_data else 'uz'
+        
+        if lang == 'uz':
+            cust_close_msg = "❌ **Mijoz bilan aloqa (chat) yopildi.**\nFoydalanganingiz uchun rahmat!"
+        else:
+            cust_close_msg = "❌ **Диалог с оператором закрыт.**\nСпасибо за обращение!"
+            
+        try:
+            await bot.send_message(customer_id, cust_close_msg, reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
+        except:
+            pass
+            
+    await call.message.answer("❌ Chat muvaffaqiyatli yopildi.", reply_markup=reply.get_admin_menu_kb())
+    await call.answer()
+
+@router.message(AdminStates.in_chat)
+async def admin_chat_message(message: types.Message, state: FSMContext, bot):
+    data = await state.get_data()
+    customer_id = data.get('chat_customer_id')
+    
+    if not customer_id:
+        await message.answer("Xatolik: chat uchun mijoz topilmadi. Chatni yoping.")
+        return
+        
+    # Send message to customer
+    text_to_send = f"💬 **Operator:** {message.text}" if message.text else "💬 **Operator (rasm yubordi)**"
+    
+    try:
+        if message.text:
+            await bot.send_message(customer_id, text_to_send, parse_mode="Markdown")
+        elif message.photo:
+            await bot.send_photo(customer_id, message.photo[-1].file_id, caption=text_to_send, parse_mode="Markdown")
+        elif message.voice:
+            await bot.send_voice(customer_id, message.voice.file_id, caption=text_to_send, parse_mode="Markdown")
+        else:
+            await bot.send_message(customer_id, "⚠️ Operator yuborgan xabar turi qo'llab-quvvatlanmaydi.")
+            
+        await message.reply("✅ Yuborildi.")
+    except Exception as e:
+        await message.reply(f"❌ Xabar yuborishda xatolik: {e}")
