@@ -16,6 +16,28 @@ router = Router()
 
 PHONE_REGEX = r"^\+998[0-9]{9}$"
 
+async def get_next_start_image(state: FSMContext) -> str or None:
+    images = await db.get_start_images()
+    if not images:
+        return None
+    data = await state.get_data()
+    idx = data.get('start_img_idx', 0)
+    # Get the image at this index
+    img = images[idx % len(images)]
+    # Update state to point to the next image for the next step
+    await state.update_data(start_img_idx=(idx + 1) % len(images))
+    return img
+
+async def send_main_menu_with_sequence(message: types.Message, state: FSMContext, lang: str):
+    img = await get_next_start_image(state)
+    caption = MESSAGES[lang]['main_menu']
+    kb = reply.get_main_menu_kb(lang)
+    if img:
+        await message.answer_photo(img, caption=caption, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await message.answer(caption, reply_markup=kb, parse_mode="Markdown")
+    await state.set_state(ClientStates.main_menu)
+
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Earth radius in km
     dLat = math.radians(lat2 - lat1)
@@ -46,7 +68,7 @@ async def start_cmd(message: types.Message, state: FSMContext, bot: Bot):
         return
 
     user = await db.get_user(message.from_user.id)
-    images = await db.get_start_images()
+    img = await get_next_start_image(state)
     
     lang = user[4] if user else 'uz'
     
@@ -57,11 +79,12 @@ async def start_cmd(message: types.Message, state: FSMContext, bot: Bot):
     
     caption_with_more = caption + "\n\nℹ️ More info: /more"
     
-    if images:
-        img = random.choice(images)
-        await message.answer_photo(img, caption=caption_with_more, reply_markup=reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang), parse_mode="Markdown")
+    kb = reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang)
+    
+    if img:
+        await message.answer_photo(img, caption=caption_with_more, reply_markup=kb, parse_mode="Markdown")
     else:
-        await message.answer(caption_with_more, reply_markup=reply.get_lang_kb() if not user else reply.get_main_menu_kb(lang), parse_mode="Markdown")
+        await message.answer(caption_with_more, reply_markup=kb, parse_mode="Markdown")
     
     if not user:
         await state.set_state(ClientStates.language)
@@ -107,13 +130,13 @@ async def set_lang(message: types.Message, state: FSMContext, bot: Bot):
         await message.answer(MESSAGES[lang]['share_phone'], reply_markup=reply.get_phone_kb(lang), parse_mode="Markdown")
         await state.set_state(ClientStates.phone)
     else:
-        await message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
-        await state.set_state(ClientStates.main_menu)
+        await send_main_menu_with_sequence(message, state, lang)
 
 @router.message(ClientStates.phone)
 async def set_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'uz')
+    is_profile_edit = data.get('edit_profile_phone', False)
     
     phone = None
     if message.contact:
@@ -135,8 +158,16 @@ async def set_phone(message: types.Message, state: FSMContext):
         return
 
     await db.update_user_phone(message.from_user.id, phone)
-    await message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
-    await state.set_state(ClientStates.main_menu)
+    
+    if is_profile_edit:
+        success_msg = "✅ Telefon raqamingiz muvaffaqiyatli o'zgartirildi!" if lang == 'uz' else "✅ Номер телефона успешно изменен!"
+        await message.answer(success_msg, parse_mode="Markdown")
+        await state.update_data(edit_profile_phone=False)
+        await state.set_state(ClientStates.main_menu)
+        await show_profile_handler(message, state)
+        return
+
+    await send_main_menu_with_sequence(message, state, lang)
 
 @router.message(F.text.in_([MESSAGES['uz']['order_btn'], MESSAGES['ru']['order_btn']]))
 async def order_water(message: types.Message, state: FSMContext):
@@ -144,11 +175,14 @@ async def order_water(message: types.Message, state: FSMContext):
     lang = user[4]
     price = int(await db.get_setting('water_price', 15000))
     await state.update_data(quantity=1)
-    await message.answer(
-        MESSAGES[lang]['select_quantity'].format(total=price), 
-        reply_markup=inline.get_quantity_kb(1, price, lang),
-        parse_mode="Markdown"
-    )
+    
+    img = await get_next_start_image(state)
+    caption = MESSAGES[lang]['select_quantity'].format(total=price)
+    kb = inline.get_quantity_kb(1, price, lang)
+    if img:
+        await message.answer_photo(img, caption=caption, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await message.answer(caption, reply_markup=kb, parse_mode="Markdown")
 
 async def abandoned_cart_reminder(bot: Bot, user_id: int, lang: str):
     await asyncio.sleep(1800) # 30 mins
@@ -192,7 +226,7 @@ async def handle_quantity(call: types.CallbackQuery, state: FSMContext, bot: Bot
         await state.update_data(cart_quantity=quantity)
         await call.answer(MESSAGES[lang]['added_to_cart'])
         await call.message.delete()
-        await call.message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
+        await send_main_menu_with_sequence(call.message, state, lang)
         await call.message.answer(MESSAGES[lang]['added_to_cart_detailed'], reply_markup=inline.get_added_to_cart_kb(lang), parse_mode="Markdown")
         
         # Start reminder
@@ -409,21 +443,169 @@ async def show_history(message: types.Message):
     
     await message.answer(MESSAGES[lang]['order_history'].format(history=history_text), parse_mode="Markdown")
 
-@router.message(F.text.in_([MESSAGES['uz']['settings_btn'], MESSAGES['ru']['settings_btn']]))
-async def show_profile(message: types.Message):
-    user = await db.get_user(message.from_user.id)
+def get_profile_content(user, full_name):
     lang = user[4]
-    await message.answer(
-        MESSAGES[lang]['profile'].format(
-            id=user[0],
-            phone=user[3],
-            count=user[5]
-        ),
+    orders_count = user[5]
+    liters = orders_count * 19
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    if lang == 'uz':
+        if orders_count == 0:
+            rank_name = "Suv shaydosi 💧 (Yangi a'zo)"
+        elif 1 <= orders_count <= 4:
+            rank_name = "Doimiy iste'molchi 🥤 (Faol)"
+        elif 5 <= orders_count <= 9:
+            rank_name = "Sodiq mijoz ⭐ (Ishonchli)"
+        else:
+            rank_name = "VIP Mijoz 👑 (Premium)"
+            
+        next_discount_count = 10 - (orders_count % 10)
+        bonus_text = f"🎁 Keyingi 20% chegirmagacha **{next_discount_count}** ta buyurtma qoldi!"
+        
+        text = (
+            f"👤 **MIJOZ PROFILI**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **Foydalanuvchi:** {full_name}\n"
+            f"🆔 **Telegram ID:** `{user[0]}`\n"
+            f"📞 **Telefon raqami:** `{user[3] or 'Kiritilmagan'}`\n"
+            f"🌐 **Tanlangan til:** `O'zbekcha 🇺🇿`\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 **XARIDLAR STATISTIKASI:**\n"
+            f"🥤 **Buyurtmalar soni:** `{orders_count}` ta\n"
+            f"💧 **Iste'mol qilingan suv:** `{liters}` litr\n"
+            f"🏅 **Mijoz maqomi:** `{rank_name}`\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{bonus_text}"
+        )
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Tilni o'zgartirish", callback_data="profile_change_lang")],
+            [InlineKeyboardButton(text="📞 Telefonni o'zgartirish", callback_data="profile_edit_phone")],
+            [InlineKeyboardButton(text="📜 Buyurtmalar tarixi", callback_data="profile_order_history")]
+        ])
+    else:
+        if orders_count == 0:
+            rank_name = "Любитель воды 💧 (Новый участник)"
+        elif 1 <= orders_count <= 4:
+            rank_name = "Постоянный клиент 🥤 (Активный)"
+        elif 5 <= orders_count <= 9:
+            rank_name = "Лояльный клиент ⭐ (Надежный)"
+        else:
+            rank_name = "VIP Клиент 👑 (Премиум)"
+            
+        next_discount_count = 10 - (orders_count % 10)
+        bonus_text = f"🎁 До следующей скидки 20% осталось **{next_discount_count}** заказов!"
+        
+        text = (
+            f"👤 **ПРОФИЛЬ КЛИЕНТА**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **Пользователь:** {full_name}\n"
+            f"🆔 **Telegram ID:** `{user[0]}`\n"
+            f"📞 **Номер телефона:** `{user[3] or 'Не указан'}`\n"
+            f"🌐 **Выбранный язык:** `Русский 🇷🇺`\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 **СТАТИСТИКА ПОКУПОК:**\n"
+            f"🥤 **Количество заказов:** `{orders_count}` шт\n"
+            f"💧 **Потреблено воды:** `{liters}` литров\n"
+            f"🏅 **Статус клиента:** `{rank_name}`\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{bonus_text}"
+        )
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Сменить язык", callback_data="profile_change_lang")],
+            [InlineKeyboardButton(text="📞 Изменить телефон", callback_data="profile_edit_phone")],
+            [InlineKeyboardButton(text="📜 История заказов", callback_data="profile_order_history")]
+        ])
+        
+    return text, kb
+
+@router.message(F.text.in_([MESSAGES['uz']['settings_btn'], MESSAGES['ru']['settings_btn']]))
+async def show_profile_handler(message: types.Message, state: FSMContext):
+    user = await db.get_user(message.from_user.id)
+    if not user:
+        return
+    full_name = message.from_user.full_name
+    text, kb = get_profile_content(user, full_name)
+    
+    img = await get_next_start_image(state)
+    if img:
+        await message.answer_photo(img, caption=text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data == "profile_change_lang")
+async def profile_change_lang(call: types.CallbackQuery, state: FSMContext):
+    user = await db.get_user(call.from_user.id)
+    if not user:
+        await call.answer()
+        return
+    
+    current_lang = user[4]
+    new_lang = 'ru' if current_lang == 'uz' else 'uz'
+    
+    await db.update_user_language(call.from_user.id, new_lang)
+    updated_user = await db.get_user(call.from_user.id)
+    
+    text, kb = get_profile_content(updated_user, call.from_user.full_name)
+    
+    msg_lang_text = "🇺🇿 Til o'zgartirildi! Asosiy menyu yangilandi." if new_lang == 'uz' else "🇷🇺 Язык изменен! Главное меню обновлено."
+    await call.message.answer(msg_lang_text, reply_markup=reply.get_main_menu_kb(new_lang))
+    
+    try:
+        await call.message.edit_caption(caption=text, reply_markup=kb, parse_mode="Markdown")
+    except:
+        try:
+            await call.message.edit_text(text=text, reply_markup=kb, parse_mode="Markdown")
+        except:
+            pass
+            
+    await call.answer("🌐 " + ("Til o'zgartirildi" if new_lang == 'uz' else "Язык изменен"))
+
+@router.callback_query(F.data == "profile_edit_phone")
+async def profile_edit_phone(call: types.CallbackQuery, state: FSMContext):
+    user = await db.get_user(call.from_user.id)
+    if not user:
+        await call.answer()
+        return
+    lang = user[4]
+    
+    await state.update_data(edit_profile_phone=True, lang=lang)
+    await state.set_state(ClientStates.phone)
+    
+    await call.message.answer(
+        MESSAGES[lang]['share_phone'], 
+        reply_markup=reply.get_phone_kb(lang), 
         parse_mode="Markdown"
     )
+    await call.answer()
+
+@router.callback_query(F.data == "profile_order_history")
+async def profile_order_history(call: types.CallbackQuery, state: FSMContext):
+    user = await db.get_user(call.from_user.id)
+    if not user:
+        await call.answer()
+        return
+    lang = user[4]
+    
+    orders = await db.get_user_orders(call.from_user.id, limit=5)
+    if not orders:
+        await call.message.answer(MESSAGES[lang]['order_history_empty'], parse_mode="Markdown")
+        await call.answer()
+        return
+    
+    history_text = ""
+    for o in orders:
+        history_text += MESSAGES[lang]['order_history_item'].format(
+            id=o[0], date=o[12], items=o[2], total=o[3], payment=o[9] or "Noma'lum", status=o[7]
+        )
+    
+    await call.message.answer(MESSAGES[lang]['order_history'].format(history=history_text), parse_mode="Markdown")
+    await call.answer()
 
 @router.message(F.text.in_([MESSAGES['uz']['contact_btn'], MESSAGES['ru']['contact_btn']]))
-async def show_contacts(message: types.Message):
+async def show_contacts(message: types.Message, state: FSMContext):
     user = await db.get_user(message.from_user.id)
     lang = user[4]
     
@@ -431,7 +613,12 @@ async def show_contacts(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👑 Bot Yaratuvchisi", callback_data="client_view_creator")]
     ])
-    await message.answer(MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=False)
+    
+    img = await get_next_start_image(state)
+    if img:
+        await message.answer_photo(img, caption=MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=False)
+    else:
+        await message.answer(MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=False)
 
 @router.callback_query(F.data == "client_view_creator")
 async def client_view_creator(call: types.CallbackQuery):
@@ -455,7 +642,13 @@ async def client_view_creator(call: types.CallbackQuery):
         [InlineKeyboardButton(text="💬 Bog'lanish", url=f"https://t.me/{username.replace('@', '')}")],
         [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="client_back_to_contacts")]
     ])
-    await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    try:
+        await call.message.edit_caption(caption=text, reply_markup=kb, parse_mode="Markdown")
+    except:
+        try:
+            await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+        except:
+            pass
 
 @router.callback_query(F.data == "client_back_to_contacts")
 async def client_back_to_contacts(call: types.CallbackQuery):
@@ -466,7 +659,13 @@ async def client_back_to_contacts(call: types.CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👑 Bot Yaratuvchisi", callback_data="client_view_creator")]
     ])
-    await call.message.edit_text(MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=False)
+    try:
+        await call.message.edit_caption(caption=MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown")
+    except:
+        try:
+            await call.message.edit_text(MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown")
+        except:
+            pass
 
 @router.message(Command("creator"))
 async def show_creator_cmd(message: types.Message):
@@ -545,8 +744,7 @@ async def universal_back(message: types.Message, state: FSMContext):
     elif current_state == ClientStates.payment_type:
         await checkout(message, state) # Should be a message-based version or refactored
     else:
-        await message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang))
-        await state.set_state(ClientStates.main_menu)
+        await send_main_menu_with_sequence(message, state, lang)
 
 @router.message(ClientStates.in_chat)
 async def customer_chat_message(message: types.Message, state: FSMContext, bot: Bot):
