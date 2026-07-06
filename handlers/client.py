@@ -306,6 +306,23 @@ async def view_cart(message: types.Message, state: FSMContext):
 async def checkout(call: types.CallbackQuery, state: FSMContext):
     user = await db.get_user(call.from_user.id)
     lang = user[4]
+    
+    # 1-hour order limit
+    from datetime import datetime
+    last_order_str = await db.get_last_order_time(call.from_user.id)
+    if last_order_str:
+        # Expected format: "2023-10-27 10:20:30"
+        try:
+            last_order = datetime.strptime(last_order_str, "%Y-%m-%d %H:%M:%S")
+            diff = (datetime.utcnow() - last_order).total_seconds()
+            if diff < 3600:
+                mins_left = int((3600 - diff) // 60)
+                msg = f"⏳ Kechirasiz, siz yana {mins_left} daqiqadan keyin yangi buyurtma bera olasiz." if lang == 'uz' else f"⏳ Извините, вы сможете сделать новый заказ через {mins_left} минут."
+                await call.answer(msg, show_alert=True)
+                return
+        except Exception as e:
+            pass
+            
     await call.message.delete()
     await call.message.answer(MESSAGES[lang]['send_location'], reply_markup=reply.get_location_kb(lang), parse_mode="Markdown")
     await state.set_state(ClientStates.location)
@@ -390,7 +407,7 @@ async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot:
     await state.update_data(cart_quantity=0)
     await call.message.delete()
     
-    final_msg = (bonus_text + "\n\n" if bonus_text else "") + MESSAGES[lang]['order_received'].format(id=order_id)
+    final_msg = (bonus_text + "\n\n" if bonus_text else "") + MESSAGES[lang]['order_received'].format(id=f"{order_id:06d}")
     await call.message.answer(final_msg, reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
     await state.set_state(ClientStates.main_menu)
     
@@ -454,7 +471,8 @@ async def handle_check_photo(message: types.Message, state: FSMContext, bot):
 
     await db.increment_order_count(message.from_user.id)
     await state.update_data(cart_quantity=0)
-    await message.answer(MESSAGES[lang]['check_received'], reply_markup=reply.get_main_menu_kb(lang), parse_mode="Markdown")
+    await message.answer(MESSAGES[lang]['check_received'], reply_markup=inline.get_order_client_kb(order_id, lang), parse_mode="Markdown")
+    await message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang))
     await state.set_state(ClientStates.main_menu)
 
     # Notify admins with Photo
@@ -462,7 +480,7 @@ async def handle_check_photo(message: types.Message, state: FSMContext, bot):
         try:
             await bot.send_photo(
                 admin_id, file_id,
-                caption=MESSAGES['uz']['check_request_admin'].format(id=order_id, name=user[2], total=total),
+                caption=MESSAGES['uz']['check_request_admin'].format(id=f"{order_id:06d}", name=user[2], total=total),
                 reply_markup=inline.get_admin_order_kb(order_id, status='pending_payment'),
                 parse_mode="Markdown"
             )
@@ -481,7 +499,7 @@ async def show_history(message: types.Message):
     history_text = ""
     for o in orders:
         history_text += MESSAGES[lang]['order_history_item'].format(
-            id=o[0], date=o[12], items=o[2], total=o[3], payment=o[9] or "Noma'lum", status=o[7]
+            id=f"{o[0]:06d}", date=o[12], items=o[2], total=o[3], payment=o[9] or "Noma'lum", status=o[7]
         )
     
     await message.answer(MESSAGES[lang]['order_history'].format(history=history_text), parse_mode="Markdown")
@@ -641,7 +659,7 @@ async def profile_order_history(call: types.CallbackQuery, state: FSMContext):
     history_text = ""
     for o in orders:
         history_text += MESSAGES[lang]['order_history_item'].format(
-            id=o[0], date=o[12], items=o[2], total=o[3], payment=o[9] or "Noma'lum", status=o[7]
+            id=f"{o[0]:06d}", date=o[12], items=o[2], total=o[3], payment=o[9] or "Noma'lum", status=o[7]
         )
     
     await call.message.answer(MESSAGES[lang]['order_history'].format(history=history_text), parse_mode="Markdown")
@@ -835,3 +853,153 @@ async def customer_chat_message(message: types.Message, state: FSMContext, bot: 
         await message.reply("✅" if lang == 'uz' else "✅")
     except Exception as e:
         await message.reply(f"❌" if lang == 'uz' else "❌")
+
+@router.callback_query(F.data.startswith('client_cancel_'))
+async def client_cancel_order(call: types.CallbackQuery, state: FSMContext, bot: Bot):
+    order_id = int(call.data.split('_')[2])
+    order = await db.get_order(order_id)
+    if not order:
+        await call.answer("Buyurtma topilmadi / Заказ не найден", show_alert=True)
+        return
+    
+    # Check time (within 2 mins)
+    from datetime import datetime
+    created_at = datetime.strptime(order[12], "%Y-%m-%d %H:%M:%S")
+    diff = (datetime.utcnow() - created_at).total_seconds()
+    if diff > 120:
+        await call.answer("Kechirasiz, buyurtmani bekor qilish vaqti o'tib ketdi (2 daqiqa) / Время отмены истекло (2 минуты)", show_alert=True)
+        return
+        
+    if order[7] not in ['new', 'pending_payment']:
+        await call.answer("Bu buyurtma allaqachon qabul qilingan yoki bekor qilingan / Заказ уже принят или отменен", show_alert=True)
+        return
+
+    await db.update_order_status(order_id, "rejected")
+    await db.update_order_rejection(order_id, "Mijoz tomonidan bekor qilindi / Отменен клиентом")
+    
+    # Notify admins and edit messages
+    admin_messages = await db.get_order_messages(order_id)
+    for admin_id, msg_id in admin_messages:
+        try:
+            await bot.edit_message_reply_markup(chat_id=admin_id, message_id=msg_id, reply_markup=None)
+            await bot.send_message(admin_id, f"⚠️ DIQQAT! Mijoz o'z xohishi bilan #{order_id:06d} buyurtmani bekor qildi.")
+        except Exception:
+            pass
+            
+    await call.message.edit_text(f"❌ #{order_id:06d} buyurtma muvaffaqiyatli bekor qilindi.\n\n❌ Заказ #{order_id:06d} успешно отменен.", reply_markup=None)
+    await call.answer("Buyurtma bekor qilindi / Заказ отменен", show_alert=True)
+
+@router.callback_query(F.data.startswith('client_edit_'))
+async def client_edit_menu(call: types.CallbackQuery, state: FSMContext, bot: Bot):
+    action = call.data.split('_')
+    if len(action) == 3:
+        order_id = int(action[2])
+        # Show edit options
+        order = await db.get_order(order_id)
+        if not order: return
+        from datetime import datetime
+        created_at = datetime.strptime(order[12], "%Y-%m-%d %H:%M:%S")
+        if (datetime.utcnow() - created_at).total_seconds() > 600:
+            await call.answer("Kechirasiz, o'zgartirish vaqti o'tib ketdi (10 daqiqa) / Время изменения истекло (10 минут)", show_alert=True)
+            return
+        if order[7] not in ['new', 'pending_payment']:
+            await call.answer("Kechirasiz, buyurtma qabul qilib bo'lingan / Заказ уже принят", show_alert=True)
+            return
+        await call.message.edit_reply_markup(reply_markup=inline.get_edit_order_kb(order_id, 'uz'))
+        
+    elif action[2] == 'back':
+        order_id = int(action[3])
+        await call.message.edit_reply_markup(reply_markup=inline.get_order_client_kb(order_id, 'uz'))
+        
+    elif action[2] == 'qty':
+        order_id = int(action[3])
+        order = await db.get_order(order_id)
+        if not order: return
+        from datetime import datetime
+        created_at = datetime.strptime(order[12], "%Y-%m-%d %H:%M:%S")
+        if (datetime.utcnow() - created_at).total_seconds() > 600:
+            await call.answer("Vaqt o'tib ketgan", show_alert=True)
+            return
+        await state.update_data(editing_order_id=order_id)
+        msg = await call.message.answer("Yangi miqdorni kiriting (dona): / Введите новое количество (шт):", reply_markup=types.ReplyKeyboardRemove())
+        await state.set_state(ClientStates.edit_quantity)
+        await state.update_data(del_msg_id=msg.message_id)
+        await call.answer()
+
+@router.message(ClientStates.edit_quantity)
+async def handle_edit_qty(message: types.Message, state: FSMContext, bot: Bot):
+    if not message.text.isdigit():
+        await message.answer("Iltimos, raqam kiriting! / Пожалуйста, введите число!")
+        return
+        
+    new_qty = int(message.text)
+    if new_qty < 1:
+        await message.answer("Miqdor 1 dan katta bo'lishi kerak / Количество должно быть больше 1")
+        return
+        
+    data = await state.get_data()
+    order_id = data.get('editing_order_id')
+    if not order_id:
+        await state.clear()
+        return
+        
+    order = await db.get_order(order_id)
+    if not order:
+        return
+        
+    from datetime import datetime
+    created_at = datetime.strptime(order[12], "%Y-%m-%d %H:%M:%S")
+    if (datetime.utcnow() - created_at).total_seconds() > 600:
+        await message.answer("Kechirasiz, o'zgartirish vaqti o'tib ketdi (10 daqiqa) / Время изменения истекло (10 минут)")
+        await state.set_state(ClientStates.main_menu)
+        return
+        
+    price = int(await db.get_setting('water_price', 15000))
+    new_total = new_qty * price
+    
+    # Update order in DB
+    items_text = f"{new_qty} dona 19L"
+    await db.update_order_items_and_price(order_id, items_text, new_total)
+    
+    # Rebuild admin message
+    user_db = await db.get_user(order[1])
+    recent_orders = await db.get_recent_active_orders(order[1], hours=2)
+    linked_orders_text = ""
+    if order_id in recent_orders:
+        recent_orders.remove(order_id)
+    if recent_orders:
+        linked_ids_str = ", ".join([f"#{oid:06d}" for oid in recent_orders])
+        linked_orders_text = f"\n\n🔗 **DIQQAT! Mijozning oxirgi 2 soat ichida yana {len(recent_orders)} ta faol buyurtmasi bor! Bularni birga yetkazish mumkin.**\nBog'langan ID: {linked_ids_str}"
+
+    username = user_db[1]
+    profile_link = f"[@{username}](https://t.me/{username})" if username else f"[Lichka](tg://user?id={order[1]})"
+    
+    # Notify admins
+    admin_messages = await db.get_order_messages(order_id)
+    for admin_id, msg_id in admin_messages:
+        try:
+            if order[9] == 'cash':
+                text = MESSAGES['uz']['new_order_admin'].format(
+                    id=f"{order_id:06d}", name=user_db[2], profile_link=profile_link, phone=user_db[3],
+                    quantity=new_qty, total=new_total, address=order[4], payment=order[9]
+                ) + linked_orders_text
+                await bot.edit_message_text(text, chat_id=admin_id, message_id=msg_id, reply_markup=inline.get_admin_order_kb(order_id), parse_mode="Markdown")
+            else:
+                text = MESSAGES['uz']['check_request_admin'].format(
+                    id=f"{order_id:06d}", name=user_db[2], total=new_total
+                ) + linked_orders_text
+                await bot.edit_message_caption(chat_id=admin_id, message_id=msg_id, caption=text, reply_markup=inline.get_admin_order_kb(order_id, status='pending_payment'), parse_mode="Markdown")
+                
+            await bot.send_message(admin_id, f"⚠️ YANGILANISH! Mijoz #{order_id:06d} buyurtmani tahrirladi:\n\nYangi miqdor: {items_text}\nYangi summa: {new_total} so'm", reply_to_message_id=msg_id)
+        except Exception:
+            try:
+                await bot.send_message(admin_id, f"⚠️ YANGILANISH! Mijoz #{order_id:06d} buyurtmani tahrirladi:\n\nYangi miqdor: {items_text}\nYangi summa: {new_total} so'm")
+            except Exception:
+                pass
+                
+    user = await db.get_user(message.from_user.id)
+    lang = user[4] if user else 'uz'
+    
+    # Clear state and give main menu back
+    await state.set_state(ClientStates.main_menu)
+    await message.answer(f"✅ #{order_id:06d} buyurtma muvaffaqiyatli tahrirlandi!\nYangi miqdor: {items_text}\nYangi summa: {new_total} so'm", reply_markup=reply.get_main_menu_kb(lang))

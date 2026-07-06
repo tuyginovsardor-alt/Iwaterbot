@@ -125,3 +125,21 @@ def get_admin_channels_list_kb(channels):
         kb.append([InlineKeyboardButton(text=f"🗑 {ch[1]}", callback_data=f"del_channel_{ch[0]}")])
     kb.append([InlineKeyboardButton(text="➕ Kanal qo'shish", callback_data="add_channel")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_order_client_kb(order_id, lang):
+    from locales.strings import MESSAGES
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Bekor qilish (2 daq) / Отмена", callback_data=f"client_cancel_{order_id}")],
+            [InlineKeyboardButton(text="✏️ Tahrirlash (10 daq) / Изменить", callback_data=f"client_edit_{order_id}")]
+        ]
+    )
+
+def get_edit_order_kb(order_id, lang):
+    from locales.strings import MESSAGES
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔢 Miqdorni o'zgartirish / Изменить кол-во", callback_data=f"client_edit_qty_{order_id}")],
+            [InlineKeyboardButton(text="🔙 Orqaga / Назад", callback_data=f"client_edit_back_{order_id}")]
+        ]
+    )

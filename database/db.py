@@ -305,3 +305,45 @@ async def get_recent_active_orders(user_id, hours=2):
         async with db.execute(query, (user_id, f"-{hours} hours")) as cursor:
             rows = await cursor.fetchall()
             return [r[0] for r in rows]
+
+async def init_db_addon():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS order_messages (
+                order_id INTEGER,
+                admin_id INTEGER,
+                message_id INTEGER
+            )
+        """)
+        await db.commit()
+
+async def save_order_message(order_id, admin_id, message_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO order_messages (order_id, admin_id, message_id) VALUES (?, ?, ?)", (order_id, admin_id, message_id))
+        await db.commit()
+
+async def get_order_messages(order_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT admin_id, message_id FROM order_messages WHERE order_id = ?", (order_id,)) as cursor:
+            return await cursor.fetchall()
+
+async def get_last_order_time(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT created_at FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+async def update_order_status(order_id, status):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+        await db.commit()
+
+async def get_order(order_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)) as cursor:
+            return await cursor.fetchone()
+
+async def update_order_items_and_price(order_id, items_text, total_price):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE orders SET items = ?, total_price = ? WHERE id = ?", (items_text, total_price, order_id))
+        await db.commit()

@@ -1,6 +1,7 @@
 from aiogram.fsm.state import State, StatesGroup
 
 class ClientStates(StatesGroup):
+    edit_quantity = State()
     language = State()
     phone = State()
     main_menu = State()

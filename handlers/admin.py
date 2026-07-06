@@ -365,7 +365,7 @@ async def search_order_finish(message: types.Message, state: FSMContext, bot):
     pay_type_str = order[9] if order[9] else "Noma'lum"
     details = (
         f"🔍 **Qidiruv natijasi:**\n\n"
-        f"🆔 Buyurtma #{order[0]}\n"
+        f"🆔 Buyurtma #{order[0]:06d}\n"
         f"👤 Mijoz: {name}\n"
         f"📞 Tel: {phone}\n"
         f"📦 Mahsulot: {order[2]}\n"
@@ -441,7 +441,7 @@ async def manage_order(call: types.CallbackQuery, state: FSMContext, bot):
     
     if action == "delete":
         await db.delete_order(order_id)
-        await call.message.edit_text(f"🗑 **#{order_id}-sonli buyurtma ma'lumotlar bazasidan va statistikadan butunlay o'chirib tashlandi!**", parse_mode="Markdown")
+        await call.message.edit_text(f"🗑 **#{order_id:06d}-sonli buyurtma ma'lumotlar bazasidan va statistikadan butunlay o'chirib tashlandi!**", parse_mode="Markdown")
         await call.answer("Buyurtma o'chirildi!", show_alert=True)
         return
 
@@ -460,17 +460,17 @@ async def manage_order(call: types.CallbackQuery, state: FSMContext, bot):
     if action == "accept":
         await db.update_order_status(order_id, 'accepted', call.from_user.id)
         await call.message.edit_reply_markup(reply_markup=inline.get_admin_order_kb(order_id, 'accepted', admin_name))
-        await bot.send_message(user_id, MESSAGES[lang]['order_status_accepted'].format(id=order_id))
+        await bot.send_message(user_id, MESSAGES[lang]['order_status_accepted'].format(id=f"{order_id:06d}"))
         await call.answer("Qabul qilindi!")
     elif action == "way":
         await db.update_order_status(order_id, 'on_the_way', call.from_user.id)
         await call.message.edit_reply_markup(reply_markup=inline.get_admin_order_kb(order_id, 'on_the_way', admin_name))
-        await bot.send_message(user_id, MESSAGES[lang]['order_status_on_the_way'].format(id=order_id))
+        await bot.send_message(user_id, MESSAGES[lang]['order_status_on_the_way'].format(id=f"{order_id:06d}"))
         await call.answer("Yo'lga chiqdi!")
     elif action == "done":
         await db.update_order_status(order_id, 'delivered', call.from_user.id)
         await call.message.edit_reply_markup(reply_markup=inline.get_admin_order_kb(order_id, 'delivered', admin_name))
-        await bot.send_message(user_id, MESSAGES[lang]['order_status_delivered'].format(id=order_id))
+        await bot.send_message(user_id, MESSAGES[lang]['order_status_delivered'].format(id=f"{order_id:06d}"))
         await call.answer("Yetkazildi!")
 
 @router.message(AdminStates.rejection_reason)
@@ -485,8 +485,8 @@ async def handle_rejection(message: types.Message, state: FSMContext, bot):
     lang = user_data[4]
     
     await db.update_order_rejection(order_id, reason)
-    await bot.send_message(user_id, MESSAGES[lang]['order_rejected_msg'].format(id=order_id, reason=reason))
-    await message.answer(f"#{order_id} buyurtma rad etildi.")
+    await bot.send_message(user_id, MESSAGES[lang]['order_rejected_msg'].format(id=f"{order_id:06d}", reason=reason))
+    await message.answer(f"#{order_id:06d} buyurtma rad etildi.")
     await state.clear()
 
 @router.callback_query(F.data.startswith("check_"))
@@ -527,7 +527,7 @@ async def handle_check_rejection(message: types.Message, state: FSMContext, bot)
     ])
     
     await bot.send_message(user_id, MESSAGES[lang]['payment_rejected'].format(reason=reason))
-    await message.answer(f"#{order_id} to'lovi rad etildi.", reply_markup=kb)
+    await message.answer(f"#{order_id:06d} to'lovi rad etildi.", reply_markup=kb)
     await state.clear()
 
 @router.message(F.text == "⬅️ Mijoz menyusi")
@@ -800,7 +800,7 @@ async def open_order_chat(call: types.CallbackQuery, state: FSMContext, bot):
     
     # Send messages to admin and customer
     await call.message.answer(
-        f"💬 **Buyurtma #{order_id} bo'yicha mijoz bilan chat ochildi!**\n\n"
+        f"💬 **Buyurtma #{order_id:06d} bo'yicha mijoz bilan chat ochildi!**\n\n"
         f"Siz yozgan xabarlar mijozga yuboriladi. Chatni yopish uchun pastdagi tugmani bosing.",
         reply_markup=close_kb,
         parse_mode="Markdown"
@@ -810,9 +810,9 @@ async def open_order_chat(call: types.CallbackQuery, state: FSMContext, bot):
     lang = user_data[4] if user_data else 'uz'
     
     if lang == 'uz':
-        cust_msg = f"💬 **Buyurtmangiz (#{order_id}) bo'yicha operator siz bilan aloqaga chiqdi.**\n\nSavollaringiz yoki xabarlaringiz bo'lsa, shu yerda yozishingiz mumkin. Operator javob beradi."
+        cust_msg = f"💬 **Buyurtmangiz (#{order_id:06d}) bo'yicha operator siz bilan aloqaga chiqdi.**\n\nSavollaringiz yoki xabarlaringiz bo'lsa, shu yerda yozishingiz mumkin. Operator javob beradi."
     else:
-        cust_msg = f"💬 **Оператор связался с вами по вашему заказу (#{order_id}).**\n\nЕсли у вас есть вопросы или сообщения, вы можете писать здесь. Оператор ответит."
+        cust_msg = f"💬 **Оператор связался с вами по вашему заказу (#{order_id:06d}).**\n\nЕсли у вас есть вопросы или сообщения, вы можете писать здесь. Оператор ответит."
         
     try:
         await bot.send_message(customer_id, cust_msg, parse_mode="Markdown")
