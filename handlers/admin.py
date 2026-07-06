@@ -10,18 +10,21 @@ from config import ADMIN_IDS
 router = Router()
 
 # Middleware-like check for admin
-def is_admin(user_id):
-    return user_id in ADMIN_IDS
+async def is_admin(user_id):
+    try:
+        return int(user_id) in ADMIN_IDS
+    except:
+        return False
 
 @router.message(Command("admin"))
 async def admin_cmd(message: types.Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         return
     await message.answer("Admin paneliga xush kelibsiz!", reply_markup=reply.get_admin_menu_kb())
 
 @router.message(F.text == MESSAGES['uz']['admin_stats_btn'])
 async def show_stats(message: types.Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         return
     users, orders = await db.get_stats()
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -133,7 +136,7 @@ async def edit_terms_finish(message: types.Message, state: FSMContext):
 
 @router.message(F.text == MESSAGES['uz']['admin_settings_btn'])
 async def show_settings(message: types.Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         return
     manual_on = (await db.get_setting('manual_payment_status')) == '1'
     web_on = (await db.get_setting('web_site_status')) == '1'
@@ -164,19 +167,19 @@ async def toggle_payment(call: types.CallbackQuery):
     await db.set_setting('manual_payment_status', new_status)
     
     manual_on = new_status == '1'
-    status_text = "ON" if manual_on else "OFF"
-    await call.message.edit_reply_markup(reply_markup=inline.get_admin_settings_kb('uz', manual_on))
-    await call.answer(MESSAGES['uz']['payment_mode_updated'].format(status=status_text))
+    web_on = (await db.get_setting('web_site_status')) == '1'
+    await call.message.edit_reply_markup(reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on))
+    await call.answer(MESSAGES['uz']['payment_mode_updated'].format(status="ON" if manual_on else "OFF"))
 
 @router.callback_query(F.data == "set_price")
 async def set_price_start(call: types.CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
+    if not await is_admin(call.from_user.id): return
     await call.message.answer(MESSAGES['uz']['enter_new_price'])
     await state.set_state(AdminStates.change_price)
 
 @router.message(AdminStates.change_price)
 async def set_price_finish(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id): return
+    if not await is_admin(message.from_user.id): return
     if not message.text.isdigit():
         await message.answer("Iltimos, faqat raqam kiriting!")
         return
@@ -186,16 +189,133 @@ async def set_price_finish(message: types.Message, state: FSMContext):
     await state.clear()
     await admin_cmd(message)
 
+@router.callback_query(F.data == "edit_welcome_uz_btn")
+async def edit_welcome_uz_start(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    await call.message.answer(MESSAGES['uz']['enter_welcome_uz'])
+    await state.set_state(AdminStates.edit_welcome_uz)
+    await call.answer()
+
+@router.message(AdminStates.edit_welcome_uz)
+async def edit_welcome_uz_finish(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    await db.set_setting('welcome_msg_uz', message.text)
+    await message.answer(MESSAGES['uz']['welcome_updated_uz'])
+    await state.clear()
+    await admin_cmd(message)
+
+@router.callback_query(F.data == "edit_welcome_ru_btn")
+async def edit_welcome_ru_start(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    await call.message.answer(MESSAGES['uz']['enter_welcome_ru'])
+    await state.set_state(AdminStates.edit_welcome_ru)
+    await call.answer()
+
+@router.message(AdminStates.edit_welcome_ru)
+async def edit_welcome_ru_finish(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    await db.set_setting('welcome_msg_ru', message.text)
+    await message.answer(MESSAGES['uz']['welcome_updated_ru'])
+    await state.clear()
+    await admin_cmd(message)
+
+@router.callback_query(F.data == "edit_terms_uz_btn")
+async def edit_terms_uz_start(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    await call.message.answer(MESSAGES['uz']['enter_terms_text'])
+    await state.set_state(AdminStates.edit_terms)
+    await call.answer()
+
+@router.callback_query(F.data == "edit_terms_ru_btn")
+async def edit_terms_ru_start(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    await call.message.answer(MESSAGES['uz']['enter_terms_ru'])
+    await state.set_state(AdminStates.edit_terms_ru)
+    await call.answer()
+
+@router.message(AdminStates.edit_terms_ru)
+async def edit_terms_ru_finish(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    await db.set_setting('terms_ru', message.text)
+    await message.answer(MESSAGES['uz']['terms_updated_ru'])
+    await state.clear()
+    await admin_cmd(message)
+
+@router.message(F.text == MESSAGES['uz']['admin_search_order_btn'])
+async def search_order_start(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    await message.answer(MESSAGES['uz']['enter_search_order_id'])
+    await state.set_state(AdminStates.search_order)
+
+@router.message(AdminStates.search_order)
+async def search_order_finish(message: types.Message, state: FSMContext, bot):
+    if not await is_admin(message.from_user.id): return
+    order_id_str = message.text.replace("#", "").strip()
+    if not order_id_str.isdigit():
+        await message.answer("Iltimos, faqat buyurtma ID raqamini kiriting!")
+        return
+    
+    order_id = int(order_id_str)
+    order = await db.get_order(order_id)
+    if not order:
+        await message.answer(MESSAGES['uz']['order_not_found'])
+        return
+    
+    user_id = order[1]
+    user_data = await db.get_user(user_id)
+    name = user_data[2] if user_data else "Veb-sayt foydalanuvchisi"
+    phone = user_data[3] if user_data else "Kiritilmagan"
+    
+    status_emoji = {
+        'new': '🆕 Yangi',
+        'accepted': '✅ Qabul qilingan',
+        'on_the_way': '🚚 Yo\'lda',
+        'delivered': '🏁 Yetkazilgan',
+        'pending_payment': '💳 To\'lov kutilmoqda',
+        'rejected': '❌ Rad etilgan'
+    }.get(order[7], order[7])
+
+    pay_type_str = order[9] if order[9] else "Noma'lum"
+    details = (
+        f"🔍 **Qidiruv natijasi:**\n\n"
+        f"🆔 Buyurtma #{order[0]}\n"
+        f"👤 Mijoz: {name}\n"
+        f"📞 Tel: {phone}\n"
+        f"📦 Mahsulot: {order[2]}\n"
+        f"💰 Jami: {order[3]:,} so'm\n"
+        f"📍 Manzil: {order[4]}\n"
+        f"💳 To'lov: {pay_type_str}\n"
+        f"⏳ Status: **{status_emoji}**\n"
+        f"📅 Sana: {order[12]}"
+    )
+    
+    if order[11]:
+        details += f"\n⚠️ Sababi: {order[11]}"
+        
+    await message.answer(
+        details, 
+        reply_markup=inline.get_admin_order_kb(order[0], status=order[7], admin_name="Admin"),
+        parse_mode="Markdown"
+    )
+    
+    if order[5] != 0:
+        try:
+            await bot.send_location(message.chat.id, order[5], order[6])
+        except Exception:
+            pass
+            
+    await state.clear()
+
 @router.message(F.text == MESSAGES['uz']['admin_mailing_btn'])
 async def start_mailing(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         return
     await message.answer(MESSAGES['uz']['admin_mailing_btn'], reply_markup=reply.get_admin_menu_kb())
     await state.set_state(AdminStates.mailing)
 
 @router.message(AdminStates.mailing)
 async def handle_mailing(message: types.Message, state: FSMContext, bot):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         return
     
     users = await db.get_all_users()
@@ -212,7 +332,7 @@ async def handle_mailing(message: types.Message, state: FSMContext, bot):
 
 @router.callback_query(F.data.startswith("order_"))
 async def manage_order(call: types.CallbackQuery, state: FSMContext, bot):
-    if not is_admin(call.from_user.id):
+    if not await is_admin(call.from_user.id):
         await call.answer("Siz admin emassiz!", show_alert=True)
         return
     

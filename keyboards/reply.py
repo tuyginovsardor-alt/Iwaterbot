@@ -41,6 +41,7 @@ def get_admin_menu_kb(lang='uz'):
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=MESSAGES[lang]['stats_btn']), KeyboardButton(text=MESSAGES[lang]['mailing_btn'])],
+            [KeyboardButton(text=MESSAGES[lang]['admin_settings_btn']), KeyboardButton(text=MESSAGES[lang]['admin_search_order_btn'])],
             [KeyboardButton(text="⬅️ Mijoz menyusi")]
         ],
         resize_keyboard=True

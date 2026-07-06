@@ -53,6 +53,8 @@ async def init_db():
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('web_site_status', '1')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('terms_uz', 'Rasmiy shartlar matni (UZ)')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('terms_ru', 'Официальный текст условий (RU)')")
+        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_msg_uz', '👋 Assalomu alaykum! **iWater** xizmatiga xush kelibsiz.\n✨ Toza va sifatli 19L suv yetkazib berish.\n\n👇 Davom etish uchun tilni tanlang:')")
+        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_msg_ru', '👋 Здравствуйте! Добро пожаловать в сервис **iWater**.\n✨ Доставка чистой и качественной 19л воды.\n\n👇 Для продолжения выберите язык:')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('warehouse_lat', '41.2995')")
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('warehouse_lon', '69.2401')")
         
@@ -208,3 +210,7 @@ async def get_all_users():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT user_id FROM users") as cursor:
             return await cursor.fetchall()
+
+async def get_admins():
+    from config import ADMIN_IDS
+    return ADMIN_IDS

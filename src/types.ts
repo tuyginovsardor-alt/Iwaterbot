@@ -31,4 +31,6 @@ export interface Settings {
   terms_ru: string;
   warehouse_lat: string;
   warehouse_lon: string;
+  welcome_msg_uz?: string;
+  welcome_msg_ru?: string;
 }

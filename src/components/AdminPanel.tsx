@@ -15,12 +15,17 @@ interface AdminPanelProps {
 export default function AdminPanel({ settings, orders, onRefresh, onUpdateSettings }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<'orders' | 'stats' | 'settings' | 'channels'>('orders');
   
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Settings Form State
   const [waterPrice, setWaterPrice] = useState(settings.water_price);
   const [manualPay, setManualPay] = useState(settings.manual_payment_status === '1');
   const [webActive, setWebActive] = useState(settings.web_site_status === '1');
   const [termsUz, setTermsUz] = useState(settings.terms_uz);
   const [termsRu, setTermsRu] = useState(settings.terms_ru);
+  const [welcomeUz, setWelcomeUz] = useState(settings.welcome_msg_uz || "👋 Assalomu alaykum! **iWater** xizmatiga xush kelibsiz.\n✨ Toza va sifatli 19L suv yetkazib berish.\n\n👇 Davom etish uchun tilni tanlang:");
+  const [welcomeRu, setWelcomeRu] = useState(settings.welcome_msg_ru || "👋 Здравствуйте! Добро пожаловать в сервис **iWater**.\n✨ Доставка чистой и качественной 19л воды.\n\n👇 Для продолжения выберите язык:");
   
   // Channels Management State
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -59,6 +64,8 @@ export default function AdminPanel({ settings, orders, onRefresh, onUpdateSettin
           web_site_status: webActive ? '1' : '0',
           terms_uz: termsUz,
           terms_ru: termsRu,
+          welcome_msg_uz: welcomeUz,
+          welcome_msg_ru: welcomeRu,
         })
       });
       const data = await response.json();
@@ -232,12 +239,35 @@ export default function AdminPanel({ settings, orders, onRefresh, onUpdateSettin
               </div>
             </div>
 
+            {/* Search Box */}
+            <div className="bg-zinc-950/20 p-1 rounded-2xl border border-zinc-850">
+              <input
+                type="text"
+                placeholder="Buyurtmalarni ID, telefon yoki mijoz ismi orqali qidirish..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+
             {/* List */}
             {orders.length === 0 ? (
               <div className="text-center py-12 text-zinc-500 text-sm">Hozircha buyurtmalar yo'q.</div>
-            ) : (
-              <div className="space-y-3">
-                {orders.map(o => (
+            ) : (() => {
+              const filteredOrders = orders.filter(o => 
+                o.id.toString().includes(searchQuery) ||
+                o.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                o.phone.includes(searchQuery) ||
+                o.address.toLowerCase().includes(searchQuery.toLowerCase())
+              );
+
+              if (filteredOrders.length === 0) {
+                return <div className="text-center py-12 text-zinc-500 text-sm">Mos keladigan buyurtmalar topilmadi.</div>;
+              }
+
+              return (
+                <div className="space-y-3">
+                  {filteredOrders.map(o => (
                   <div key={o.id} className="bg-zinc-950/40 border border-zinc-850 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-zinc-800 transition-all">
                     <div className="space-y-2 max-w-md">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -368,9 +398,10 @@ export default function AdminPanel({ settings, orders, onRefresh, onUpdateSettin
                       )}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -500,8 +531,8 @@ export default function AdminPanel({ settings, orders, onRefresh, onUpdateSettin
                   <textarea
                     value={termsUz}
                     onChange={(e) => setTermsUz(e.target.value)}
-                    rows={3}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none"
+                    rows={2}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none"
                   />
                 </div>
 
@@ -510,8 +541,28 @@ export default function AdminPanel({ settings, orders, onRefresh, onUpdateSettin
                   <textarea
                     value={termsRu}
                     onChange={(e) => setTermsRu(e.target.value)}
+                    rows={2}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-zinc-300">Kutib olish start matni (Uzbek)</label>
+                  <textarea
+                    value={welcomeUz}
+                    onChange={(e) => setWelcomeUz(e.target.value)}
                     rows={3}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-zinc-300">Приветственный текст start (Russian)</label>
+                  <textarea
+                    value={welcomeRu}
+                    onChange={(e) => setWelcomeRu(e.target.value)}
+                    rows={3}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none"
                   />
                 </div>
               </div>

@@ -54,6 +54,8 @@ const defaultData: DbData = {
     web_site_status: '1',
     terms_uz: 'Rasmiy iWater foydalanish shartlari: toza va sifatli 19L suv yetkazib berish.',
     terms_ru: 'Официальные правила использования iWater: быстрая доставка чистой воды 19л.',
+    welcome_msg_uz: '👋 Assalomu alaykum! **iWater** xizmatiga xush kelibsiz.\n✨ Toza va sifatli 19L suv yetkazib berish.\n\n👇 Davom etish uchun tilni tanlang:',
+    welcome_msg_ru: '👋 Здравствуйте! Добро пожаловать в сервис **iWater**.\n✨ Доставка чистой и качественной 19л воды.\n\n👇 Для продолжения выберите язык:',
     warehouse_lat: '41.2995',
     warehouse_lon: '69.2401'
   },

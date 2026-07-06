@@ -48,10 +48,12 @@ async def start_cmd(message: types.Message, state: FSMContext, bot: Bot):
     user = await db.get_user(message.from_user.id)
     images = await db.get_start_images()
     
-    caption = MESSAGES['uz']['start']
-    if user:
-        lang = user[4]
-        caption = MESSAGES[lang]['main_menu']
+    lang = user[4] if user else 'uz'
+    
+    welcome_db_key = f'welcome_msg_{lang}'
+    caption = await db.get_setting(welcome_db_key)
+    if not caption:
+        caption = MESSAGES[lang]['start'] if not user else MESSAGES[lang]['main_menu']
     
     if images:
         img = random.choice(images)
@@ -227,6 +229,12 @@ async def handle_location(message: types.Message, state: FSMContext):
 async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot: Bot):
     user = await db.get_user(call.from_user.id)
     lang = user[4]
+    
+    if call.data == "pay_back":
+        await call.message.delete()
+        await call.message.answer(MESSAGES[lang]['send_location'], reply_markup=reply.get_location_kb(lang), parse_mode="Markdown")
+        await state.set_state(ClientStates.location)
+        return
     data = await state.get_data()
     quantity = data.get('cart_quantity', 0)
     price = int(await db.get_setting('water_price', 15000))
@@ -240,7 +248,8 @@ async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot:
     payment_type = "Naqd" if call.data == "pay_cash" else "Karta (Manual)"
     
     if call.data == "pay_manual":
-        await call.message.edit_text(MESSAGES[lang]['send_check'].format(total=total), parse_mode="Markdown")
+        kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=MESSAGES[lang]['back_btn'], callback_data="check_back")]])
+        await call.message.edit_text(MESSAGES[lang]['send_check'].format(total=total), reply_markup=kb, parse_mode="Markdown")
         await state.update_data(payment_type=payment_type, final_total=total)
         await state.set_state(ClientStates.upload_check)
         return
@@ -282,6 +291,16 @@ async def handle_payment_type(call: types.CallbackQuery, state: FSMContext, bot:
             if data['order_lat'] != 0:
                 await bot.send_location(admin_id, data['order_lat'], data['order_lon'])
         except Exception: continue
+
+@router.callback_query(ClientStates.upload_check, F.data == "check_back")
+async def handle_check_back(call: types.CallbackQuery, state: FSMContext):
+    user = await db.get_user(call.from_user.id)
+    lang = user[4]
+    await call.message.delete()
+    manual_on = (await db.get_setting('manual_payment_status')) == '1'
+    await call.message.answer(MESSAGES[lang]['select_payment'], reply_markup=inline.get_payment_kb(lang, manual_on))
+    await state.set_state(ClientStates.payment_type)
+    await call.answer()
 
 @router.message(ClientStates.upload_check, F.photo)
 async def handle_check_photo(message: types.Message, state: FSMContext, bot):

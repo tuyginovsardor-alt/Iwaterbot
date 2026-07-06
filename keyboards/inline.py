@@ -26,6 +26,7 @@ def get_payment_kb(lang, manual_on=False):
     kb = [[InlineKeyboardButton(text=MESSAGES[lang]['payment_cash'], callback_data="pay_cash")]]
     if manual_on:
         kb.append([InlineKeyboardButton(text=MESSAGES[lang]['payment_card'], callback_data="pay_manual")])
+    kb.append([InlineKeyboardButton(text=MESSAGES[lang]['back_btn'], callback_data="pay_back")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_admin_order_kb(order_id, status='new', admin_name=None):
@@ -76,7 +77,14 @@ def get_admin_settings_kb(lang, manual_on=False, web_on=True):
             [InlineKeyboardButton(text=MESSAGES[lang]['toggle_web_btn'].format(status=web_status_text), callback_data="toggle_web")],
             [InlineKeyboardButton(text=MESSAGES[lang]['admin_channels_btn'], callback_data="admin_channels")],
             [InlineKeyboardButton(text=MESSAGES[lang]['admin_images_btn'], callback_data="admin_images")],
-            [InlineKeyboardButton(text=MESSAGES[lang]['admin_terms_btn'], callback_data="admin_terms")]
+            [
+                InlineKeyboardButton(text="✍️ Start matni (UZ)", callback_data="edit_welcome_uz_btn"),
+                InlineKeyboardButton(text="✍️ Start matni (RU)", callback_data="edit_welcome_ru_btn")
+            ],
+            [
+                InlineKeyboardButton(text="📜 Shartlar (UZ)", callback_data="edit_terms_uz_btn"),
+                InlineKeyboardButton(text="📜 Shartlar (RU)", callback_data="edit_terms_ru_btn")
+            ]
         ]
     )
 

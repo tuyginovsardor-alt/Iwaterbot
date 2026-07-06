@@ -17,3 +17,7 @@ class AdminStates(StatesGroup):
     add_channel = State()
     edit_terms = State()
     add_image = State()
+    search_order = State()
+    edit_welcome_uz = State()
+    edit_welcome_ru = State()
+    edit_terms_ru = State()
