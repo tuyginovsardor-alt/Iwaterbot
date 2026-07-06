@@ -76,9 +76,28 @@ async def check_sub_btn(call: types.CallbackQuery, state: FSMContext, bot: Bot):
         await call.answer(MESSAGES['uz']['not_all_subbed'], show_alert=True)
 
 @router.message(ClientStates.language)
-async def set_lang(message: types.Message, state: FSMContext):
+async def set_lang(message: types.Message, state: FSMContext, bot: Bot):
     lang = 'uz' if "O'zbekcha" in message.text else 'ru'
-    await db.add_user(message.from_user.id, message.from_user.username, message.from_user.full_name, lang)
+    is_new = await db.add_user(message.from_user.id, message.from_user.username, message.from_user.full_name, lang)
+    
+    if is_new:
+        admins = await db.get_admins()
+        username_str = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
+        text = (
+            "🔔 **Yangi foydalanuvchi qo'shildi!**\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **Ism:** {message.from_user.full_name}\n"
+            f"🆔 **ID:** `{message.from_user.id}`\n"
+            f"🌐 **Username:** {username_str}\n"
+            f"🇺🇿 **Tanlangan til:** {'O\'zbekcha' if lang == 'uz' else 'Ruscha'}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        for admin_id in admins:
+            try:
+                await bot.send_message(admin_id, text, parse_mode="Markdown")
+            except:
+                pass
+
     await state.update_data(lang=lang)
     user = await db.get_user(message.from_user.id)
     if not user[3]: # if no phone
@@ -373,7 +392,70 @@ async def show_profile(message: types.Message):
 async def show_contacts(message: types.Message):
     user = await db.get_user(message.from_user.id)
     lang = user[4]
-    await message.answer(MESSAGES[lang]['contact_info'], parse_mode="Markdown", disable_web_page_preview=False)
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👑 Bot Yaratuvchisi", callback_data="client_view_creator")]
+    ])
+    await message.answer(MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=False)
+
+@router.callback_query(F.data == "client_view_creator")
+async def client_view_creator(call: types.CallbackQuery):
+    user = await db.get_user(call.from_user.id)
+    lang = user[4] if user else 'uz'
+    
+    username = await db.get_setting('creator_username', '@iwater_dev')
+    comment = await db.get_setting('creator_comment', "iWater botining rasmiy yaratuvchisi.")
+    
+    text = (
+        "👑 **Bot Yaratuvchisi (Dasturchi)**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💻 **Dasturchi:** {username}\n"
+        f"📝 **Izoh:** {comment}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✨ *Muammo yoki takliflar yuzasidan murojaat qilishingiz mumkin.*"
+    )
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Bog'lanish", url=f"https://t.me/{username.replace('@', '')}")],
+        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="client_back_to_contacts")]
+    ])
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data == "client_back_to_contacts")
+async def client_back_to_contacts(call: types.CallbackQuery):
+    user = await db.get_user(call.from_user.id)
+    lang = user[4] if user else 'uz'
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👑 Bot Yaratuvchisi", callback_data="client_view_creator")]
+    ])
+    await call.message.edit_text(MESSAGES[lang]['contact_info'], reply_markup=kb, parse_mode="Markdown", disable_web_page_preview=False)
+
+@router.message(Command("creator"))
+async def show_creator_cmd(message: types.Message):
+    user = await db.get_user(message.from_user.id)
+    lang = user[4] if user else 'uz'
+    
+    username = await db.get_setting('creator_username', '@iwater_dev')
+    comment = await db.get_setting('creator_comment', "iWater botining rasmiy yaratuvchisi.")
+    
+    text = (
+        "👑 **Bot Yaratuvchisi (Dasturchi)**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💻 **Dasturchi:** {username}\n"
+        f"📝 **Izoh:** {comment}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✨ *Muammo yoki takliflar yuzasidan murojaat qilishingiz mumkin.*"
+    )
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Bog'lanish", url=f"https://t.me/{username.replace('@', '')}")]
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 @router.message(F.text.in_([MESSAGES['uz']['back_btn'], MESSAGES['ru']['back_btn']]))
 async def universal_back(message: types.Message, state: FSMContext):

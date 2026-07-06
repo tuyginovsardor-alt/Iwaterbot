@@ -21,3 +21,6 @@ class AdminStates(StatesGroup):
     edit_welcome_uz = State()
     edit_welcome_ru = State()
     edit_terms_ru = State()
+    add_admin = State()
+    edit_creator_auth = State()
+    edit_creator_info = State()

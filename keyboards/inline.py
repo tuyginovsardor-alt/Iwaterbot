@@ -84,6 +84,13 @@ def get_admin_settings_kb(lang, manual_on=False, web_on=True):
             [
                 InlineKeyboardButton(text="📜 Shartlar (UZ)", callback_data="edit_terms_uz_btn"),
                 InlineKeyboardButton(text="📜 Shartlar (RU)", callback_data="edit_terms_ru_btn")
+            ],
+            [
+                InlineKeyboardButton(text="👥 Adminlarni boshqarish", callback_data="admin_manage"),
+                InlineKeyboardButton(text="👑 Yaratuvchi (1978)", callback_data="admin_creator_settings")
+            ],
+            [
+                InlineKeyboardButton(text="💧 Suv eslatmasi (Reklama) yuborish", callback_data="admin_send_water_reminder")
             ]
         ]
     )

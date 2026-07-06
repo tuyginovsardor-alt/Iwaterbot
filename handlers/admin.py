@@ -12,9 +12,27 @@ router = Router()
 # Middleware-like check for admin
 async def is_admin(user_id):
     try:
-        return int(user_id) in ADMIN_IDS
+        admins = await db.get_admins()
+        return int(user_id) in admins
     except:
         return False
+
+@router.message(StateFilter("*"), F.text.in_([
+    "⬅️ Mijoz menyusi", "⬅️ Orqaga", "/start", "/admin", "Mijoz menyusi", "Orqaga"
+]))
+async def cancel_state_navigation(message: types.Message, state: FSMContext, bot):
+    await state.clear()
+    if message.text == "/admin":
+        await admin_cmd(message)
+    elif message.text in ["⬅️ Mijoz menyusi", "Mijoz menyusi", "/start"]:
+        from handlers.client import start_cmd
+        await start_cmd(message, state, bot)
+    else:
+        if await is_admin(message.from_user.id):
+            await admin_cmd(message)
+        else:
+            from handlers.client import start_cmd
+            await start_cmd(message, state, bot)
 
 @router.message(Command("admin"))
 async def admin_cmd(message: types.Message):
@@ -26,14 +44,31 @@ async def admin_cmd(message: types.Message):
 async def show_stats(message: types.Message):
     if not await is_admin(message.from_user.id):
         return
-    users, orders = await db.get_stats()
+    stats = await db.get_stats()
+    
+    text = (
+        "📊 **iWater — Bot Analitikasi va Statistikasi**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 **Jami foydalanuvchilar:** {stats['total_users']:,} ta\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 **Buyurtmalar ko'rsatkichlari:**\n"
+        f"  🔹 Jami buyurtmalar: {stats['total_orders']:,} ta\n"
+        f"  📅 Bugungi buyurtmalar: {stats['today_orders']:,} ta\n"
+        f"  🏁 Yetkazib berilgan: {stats['delivered_orders']:,} ta\n"
+        f"  ❌ Rad etilgan: {stats['rejected_orders']:,} ta\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "💰 **Moliyaviy ko'rsatkichlar:**\n"
+        f"  💳 Jami savdo summasi: **{stats['total_sales']:,}** so'm\n"
+        f"  💵 Bugungi savdo summasi: **{stats['today_sales']:,}** so'm\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✨ *Barcha ma'lumotlar real vaqt rejimida taqdim etilmoqda.*"
+    )
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=MESSAGES['uz']['admin_excel_btn'], callback_data="export_excel")]
     ])
-    await message.answer(
-        f"📊 Statistika:\n\n👥 Foydalanuvchilar: {users}\n📦 Jami buyurtmalar: {orders}",
-        reply_markup=kb
-    )
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 @router.callback_query(F.data == "export_excel")
 async def export_excel(call: types.CallbackQuery, bot):
@@ -436,3 +471,219 @@ async def back_to_client(message: types.Message, state: FSMContext):
     lang = user[4]
     await message.answer(MESSAGES[lang]['main_menu'], reply_markup=reply.get_main_menu_kb(lang))
     await state.clear()
+
+# --- Dynamic Admin Management ---
+@router.callback_query(F.data == "admin_manage")
+async def admin_manage_list(call: types.CallbackQuery):
+    if not await is_admin(call.from_user.id): return
+    
+    from config import ADMIN_IDS
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    admins = list(ADMIN_IDS)
+    extra_str = await db.get_setting('extra_admins', '')
+    extra_ids = []
+    if extra_str:
+        extra_ids = [int(i.strip()) for i in extra_str.split(",") if i.strip().isdigit()]
+    
+    text = (
+        "👥 **Bot Administratorlari boshqaruvi**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "👑 **Asosiy adminlar (Tizimli .env orqali):**\n"
+    )
+    for aid in admins:
+        text += f"  • `{aid}`\n"
+        
+    if extra_ids:
+        text += "\n👥 **Qo'shimcha adminlar (Dinamik):**\n"
+        for aid in extra_ids:
+            text += f"  • `{aid}`\n"
+    else:
+        text += "\n*Hozircha qo'shimcha dinamik adminlar yo'q.*"
+        
+    text += "\n━━━━━━━━━━━━━━━━━━━━━━\n⚠️ *Qo'shimcha adminlarni pastda o'chirishingiz yoki yangi admin qo'shishingiz mumkin.*"
+    
+    kb_list = []
+    for aid in extra_ids:
+        kb_list.append([InlineKeyboardButton(text=f"🗑 O'chirish: {aid}", callback_data=f"del_extra_admin_{aid}")])
+    kb_list.append([InlineKeyboardButton(text="➕ Yangi Admin qo'shish", callback_data="add_extra_admin_start")])
+    kb_list.append([InlineKeyboardButton(text="⬅️ Sozlamalarga qaytish", callback_data="admin_back_to_settings")])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_list)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data == "admin_back_to_settings")
+async def admin_back_to_settings(call: types.CallbackQuery):
+    if not await is_admin(call.from_user.id): return
+    manual_on = (await db.get_setting('manual_payment_status')) == '1'
+    web_on = (await db.get_setting('web_site_status')) == '1'
+    price = await db.get_setting('water_price')
+    await call.message.edit_text(
+        f"⚙️ **Bot Sozlamalari**\n\n💰 Hozirgi narx: {price} so'm",
+        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("del_extra_admin_"))
+async def del_extra_admin(call: types.CallbackQuery):
+    if not await is_admin(call.from_user.id): return
+    aid_to_del = call.data.replace("del_extra_admin_", "")
+    
+    extra_str = await db.get_setting('extra_admins', '')
+    if extra_str:
+        ids = [i.strip() for i in extra_str.split(",") if i.strip()]
+        if aid_to_del in ids:
+            ids.remove(aid_to_del)
+        await db.set_setting('extra_admins', ",".join(ids))
+        
+    await call.answer("Admin muvaffaqiyatli o'chirildi!", show_alert=True)
+    await admin_manage_list(call)
+
+@router.callback_query(F.data == "add_extra_admin_start")
+async def add_extra_admin_start(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    await call.message.answer("➕ **Yangi admin qo'shish**\n\nIltimos, yangi admin bo'ladigan foydalanuvchining **Telegram ID raqamini** (faqat raqam) yuboring:")
+    await state.set_state(AdminStates.add_admin)
+    await call.answer()
+
+@router.message(AdminStates.add_admin)
+async def add_extra_admin_finish(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    val = message.text.strip()
+    if not val.isdigit():
+        await message.answer("⚠️ Noto'g'ri format! Iltimos, faqat Telegram ID raqamini yuboring:")
+        return
+    
+    extra_str = await db.get_setting('extra_admins', '')
+    ids = [i.strip() for i in extra_str.split(",") if i.strip()]
+    if val not in ids:
+        ids.append(val)
+        await db.set_setting('extra_admins', ",".join(ids))
+        await message.answer(f"✅ Foydalanuvchi `{val}` muvaffaqiyatli administrator qilib tayinlandi!")
+    else:
+        await message.answer(f"⚠️ Foydalanuvchi `{val}` allaqachon adminlar ro'yxatida mavjud!")
+        
+    await state.clear()
+    await admin_cmd(message)
+
+# --- Bot Creator / Developer Settings ---
+@router.callback_query(F.data == "admin_creator_settings")
+async def admin_creator_settings_start(call: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(call.from_user.id): return
+    await call.message.answer("🔐 **Yaratuvchi ma'lumotlarini tahrirlash**\n\nIltimos, davom etish uchun maxsus **1978** parolini kiriting:")
+    await state.set_state(AdminStates.edit_creator_auth)
+    await call.answer()
+
+@router.message(AdminStates.edit_creator_auth)
+async def admin_creator_auth_finish(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    if message.text.strip() == "1978":
+        curr_username = await db.get_setting('creator_username', '@iwater_dev')
+        curr_comment = await db.get_setting('creator_comment', "iWater botining rasmiy yaratuvchisi.")
+        await message.answer(
+            "🔓 **Muvaffaqiyatli autentifikatsiya!**\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💻 Joriy Yaratuvchi username: {curr_username}\n"
+            f"📝 Joriy Yaratuvchi izoh/sharh: {curr_comment}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "✍️ Yangi ma'lumotlarni quyidagi formatda yuboring:\n"
+            "`@username | Sharh` (Masalan: `@Sardor_dev | iWater botining professional dasturchisi`):"
+        )
+        await state.set_state(AdminStates.edit_creator_info)
+    else:
+        await message.answer("❌ Noto'g'ri parol! Amaliyot bekor qilindi.")
+        await state.clear()
+        await admin_cmd(message)
+
+@router.message(AdminStates.edit_creator_info)
+async def admin_creator_info_finish(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    parts = message.text.split("|")
+    if len(parts) < 2:
+        await message.answer("⚠️ Noto'g'ri format! Iltimos, `@username | Sharh` formatida yuboring:")
+        return
+    
+    username = parts[0].strip()
+    comment = parts[1].strip()
+    
+    if not username.startswith("@"):
+        username = "@" + username
+        
+    await db.set_setting('creator_username', username)
+    await db.set_setting('creator_comment', comment)
+    
+    await message.answer("✅ Yaratuvchi ma'lumotlari muvaffaqiyatli yangilandi!")
+    await state.clear()
+    await admin_cmd(message)
+
+# --- Water Reminder (Friendly Ad) Broadcast ---
+@router.callback_query(F.data == "admin_send_water_reminder")
+async def admin_send_water_reminder_prompt(call: types.CallbackQuery):
+    if not await is_admin(call.from_user.id): return
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Ha, yuborilsin", callback_data="confirm_send_water_reminder"),
+            InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin_back_to_settings")
+        ]
+    ])
+    await call.message.edit_text(
+        "💧 **Suv eslatmasi (Reklama) yuborish**\n\n"
+        "Haqiqatdan ham barcha foydalanuvchilarga suv buyurtma qilish bo'yicha chiroyli va hushmuomila eslatma yuborishni xohlaysizmi?",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "confirm_send_water_reminder")
+async def confirm_send_water_reminder(call: types.CallbackQuery, bot):
+    if not await is_admin(call.from_user.id): return
+    await call.message.edit_text("⏳ Eslatmalar barcha foydalanuvchilarga yuborilmoqda, iltimos kuting...")
+    
+    import asyncio
+    users = await db.get_all_users()
+    sent_count = 0
+    
+    uz_msg = (
+        "💧 **Assalomu alaykum! Charchamayapsizmi?**\n\n"
+        "Sog'ligingiz uchun kuniga kamida 2 litr toza va sifatli suv ichishni unutmang. 😊\n"
+        "Uyingizda yoki ofisingizda suv tugab qolmadimi?\n\n"
+        "Agar sizga suv kerak bo'lsa, quyidagi tugmani bosib, tezkor va oson buyurtma berishingiz mumkin! 🚚💨\n\n"
+        "iWater xizmati har doim sizga xizmat qilishdan mamnun! 💙"
+    )
+    
+    ru_msg = (
+        "💧 **Здравствуйте! Как ваши дела?**\n\n"
+        "Не забывайте пить не менее 2 литров чистой воды в день для вашего здоровья. 😊\n"
+        "Не закончилась ли у вас вода дома или в офисе?\n\n"
+        "Если вам нужна вода, нажмите на кнопку ниже, чтобы сделать заказ быстро и легко! 🚚💨\n\n"
+        "Сервис iWater всегда рад служить вам! 💙"
+    )
+    
+    for u in users:
+        user_id = u[0]
+        try:
+            user_data = await db.get_user(user_id)
+            lang = user_data[4] if user_data else 'uz'
+            msg = uz_msg if lang == 'uz' else ru_msg
+            
+            await bot.send_message(
+                user_id, 
+                msg, 
+                reply_markup=reply.get_main_menu_kb(lang),
+                parse_mode="Markdown"
+            )
+            sent_count += 1
+            await asyncio.sleep(0.05) # Rate limiting
+        except:
+            pass
+            
+    await call.message.answer(f"✅ Suv eslatmasi muvaffaqiyatli yakunlandi! {sent_count} ta foydalanuvchiga xabar yuborildi.")
+    manual_on = (await db.get_setting('manual_payment_status')) == '1'
+    web_on = (await db.get_setting('web_site_status')) == '1'
+    price = await db.get_setting('water_price')
+    await call.message.answer(
+        f"⚙️ **Bot Sozlamalari**\n\n💰 Hozirgi narx: {price} so'm",
+        reply_markup=inline.get_admin_settings_kb('uz', manual_on, web_on),
+        parse_mode="Markdown"
+    )
+    await call.message.delete()

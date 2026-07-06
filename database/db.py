@@ -152,11 +152,16 @@ async def clear_start_images():
 
 async def add_user(user_id, username, full_name, language):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, full_name, language) VALUES (?, ?, ?, ?)",
-            (user_id, username, full_name, language)
-        )
-        await db.commit()
+        async with db.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            exists = await cursor.fetchone()
+        if not exists:
+            await db.execute(
+                "INSERT OR IGNORE INTO users (user_id, username, full_name, language) VALUES (?, ?, ?, ?)",
+                (user_id, username, full_name, language)
+            )
+            await db.commit()
+            return True
+        return False
 
 async def get_user(user_id):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -172,6 +177,11 @@ async def update_user_phone(user_id, phone):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE users SET phone = ? WHERE user_id = ?", (phone, user_id))
         await db.commit()
+
+async def get_all_users():
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT * FROM users") as cursor:
+            return await cursor.fetchall()
 
 async def create_order(user_id, items, total_price, address, lat, lon):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -199,7 +209,28 @@ async def get_stats():
             total_users = (await cursor.fetchone())[0]
         async with db.execute("SELECT COUNT(*) FROM orders") as cursor:
             total_orders = (await cursor.fetchone())[0]
-        return total_users, total_orders
+        async with db.execute("SELECT COUNT(*) FROM orders WHERE date(created_at) = date('now')") as cursor:
+            today_orders = (await cursor.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM orders WHERE status = 'delivered'") as cursor:
+            delivered_orders = (await cursor.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM orders WHERE status = 'rejected'") as cursor:
+            rejected_orders = (await cursor.fetchone())[0]
+        async with db.execute("SELECT SUM(total_price) FROM orders WHERE status IN ('delivered', 'accepted')") as cursor:
+            row = await cursor.fetchone()
+            total_sales = row[0] if row[0] is not None else 0
+        async with db.execute("SELECT SUM(total_price) FROM orders WHERE date(created_at) = date('now') AND status IN ('delivered', 'accepted')") as cursor:
+            row = await cursor.fetchone()
+            today_sales = row[0] if row[0] is not None else 0
+            
+        return {
+            'total_users': total_users,
+            'total_orders': total_orders,
+            'today_orders': today_orders,
+            'delivered_orders': delivered_orders,
+            'rejected_orders': rejected_orders,
+            'total_sales': total_sales,
+            'today_sales': today_sales
+        }
 
 async def increment_order_count(user_id):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -213,4 +244,16 @@ async def get_all_users():
 
 async def get_admins():
     from config import ADMIN_IDS
-    return ADMIN_IDS
+    admins = list(ADMIN_IDS)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM settings WHERE key = 'extra_admins'") as cursor:
+            row = await cursor.fetchone()
+            if row and row[0]:
+                try:
+                    extra_ids = [int(i.strip()) for i in row[0].split(",") if i.strip().isdigit()]
+                    for eid in extra_ids:
+                        if eid not in admins:
+                            admins.append(eid)
+                except:
+                    pass
+    return admins
